@@ -7,17 +7,14 @@
     <!-- Filter Form -->
     <form id="filterForm" action="{{ route('attendance.index') }}" method="GET" class="mb-4 bg-white p-4 rounded-lg shadow-md">
         <div class="row g-3">
-            <!-- Start Date -->
             <div class="col-md-3">
                 <label for="start_date" class="block text-xs font-medium text-gray-700">Start Date</label>
                 <input type="date" name="start_date" id="start_date" value="{{ $start_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1">
             </div>
-            <!-- End Date -->
             <div class="col-md-3">
                 <label for="end_date" class="block text-xs font-medium text-gray-700">End Date</label>
                 <input type="date" name="end_date" id="end_date" value="{{ $end_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1">
             </div>
-            <!-- Submit Button -->
             <div class="col-md-1 align-self-end">
                 <button type="submit" class="w-full bg-indigo-600 text-white py-1 px-2 rounded-md hover:bg-indigo-700 transition duration-300 ease-in-out transform hover:-translate-y-1">
                     <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -32,13 +29,11 @@
     <div id="attendanceControls" style="display: none;">
         <div class="mb-4 bg-white p-2 rounded-lg shadow-md flex items-center justify-between">
             <div class="flex items-center space-x-3">
-                <!-- Attendance Button -->
                 <button type="button" class="relative attendanceBtn" id="attendanceBtn" style="background: linear-gradient(135deg, #10b981, #059669); border: none; padding: 8px 16px; border-radius: 6px; color: white; font-weight: 600; transition: transform 0.3s ease, box-shadow 0.3s ease;">
                     <img src="{{ asset('images/attendance/check-in.png') }}" alt="Check-In" class="inline-block w-5 h-5 mr-1.5" id="attendanceIcon" width="20" height="20">
                     <span id="attendanceText">Check-In</span>
                     <span class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center opacity-0 transition-opacity duration-300" id="attendancePulse">!</span>
                 </button>
-                <!-- Timer Display -->
                 <div class="flex items-center bg-gray-100 rounded-md px-3 py-1.5">
                     <svg class="w-5 h-5 text-gray-600 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -48,7 +43,6 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6"></path>
                     </svg>
                 </div>
-                <!-- Break Button -->
                 <button type="button" class="relative breakBtn" id="breakBtn" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none; padding: 8px 16px; border-radius: 6px; color: white; font-weight: 600; transition: transform 0.3s ease, box-shadow 0.3s ease;" disabled>
                     <img src="{{ asset('images/attendance/coffee-break.png') }}" alt="Break" class="inline-block w-5 h-5 mr-1.5" width="20" height="20">
                     <span id="breakText">Start Break</span>
@@ -141,7 +135,6 @@
             totalWorkSeconds++;
             $('#timerDisplay').text(formatTime(totalWorkSeconds)).addClass('animate-pulse').addClass('text-gray-800').removeClass('text-red-500');
             setTimeout(() => $('#timerDisplay').removeClass('animate-pulse'), 200);
-            // Update Total Work Hours in the active attendance row without pulsing
             const $activeRow = $('.active-attendance');
             if ($activeRow.length) {
                 $activeRow.find('td').eq(4).text(formatHours(totalWorkSeconds));
@@ -180,6 +173,7 @@
                 end_date: endDate
             },
             success: function(response) {
+                console.log('Fetch attendances response:', response);
                 const tableContainer = $('#attendanceTableContainer');
                 const today = '{{ \Carbon\Carbon::today('Asia/Kolkata')->toDateString() }}';
                 if (response.attendances.length > 0) {
@@ -235,7 +229,6 @@
                             emptyTable: "No attendance records found for the given criteria."
                         }
                     });
-                    // Update active row to match timer
                     const $activeRow = $('.active-attendance');
                     if ($activeRow.length) {
                         $activeRow.find('td').eq(4).text(formatHours(totalWorkSeconds));
@@ -264,6 +257,7 @@
             url: '/attendance-status',
             type: 'GET',
             success: function(response) {
+                console.log('Attendance status:', response);
                 if (response.isCheckedIn && !response.hasCheckedOut) {
                     $('#attendanceControls').show();
                     $('#attendanceBtn').css('background', 'linear-gradient(135deg, #ef4444, #b91c1c)').find('#attendanceText').text('Check-Out');
@@ -277,7 +271,6 @@
                         $('#timerDisplay').show().text(formatTime(totalWorkSeconds)).addClass('text-red-500').removeClass('text-gray-800');
                         $('#pauseIcon').addClass('opacity-100').removeClass('opacity-0');
                         $('#breakPulse').addClass('opacity-100').removeClass('opacity-0');
-                        // Update table with totalWorkSeconds
                         const $activeRow = $('.active-attendance');
                         if ($activeRow.length) {
                             $activeRow.find('td').eq(4).text(formatHours(totalWorkSeconds));
@@ -304,7 +297,6 @@
                         stopTimer();
                     }
                 }
-                // Update table for checked-out rows
                 updateAttendanceTable();
             },
             error: function(xhr) {
@@ -317,6 +309,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM loaded');
         @if($attendances->count() > 0)
         setTimeout(function() {
             try {
@@ -332,27 +325,24 @@
                         emptyTable: "No attendance records found for the given criteria."
                     }
                 });
+                console.log('DataTable initialized');
             } catch (e) {
                 console.error('DataTables initialization failed:', e);
             }
         }, 100);
         @endif
 
-        // Check initial attendance status
         checkAttendanceStatus();
-
-        // Handle filter form submission via AJAX
-        $('#filterForm').on('submit', function(e) {
-            e.preventDefault();
-            updateAttendanceTable();
-        });
     });
 
     $(document).ready(function() {
+        console.log('Document ready');
         // Attendance Button Click Handler
         $('#attendanceBtn').on('click', function() {
+            console.log('Attendance button clicked');
             const isCheckOut = $('#attendanceText').text() === 'Check-Out';
             if (!isCheckOut) {
+                console.log('Initiating check-in');
                 Swal.fire({
                     title: 'Select Work Mode',
                     html: `
@@ -381,8 +371,10 @@
                         return mode;
                     }
                 }).then((result) => {
+                    console.log('Check-in Swal result:', result);
                     if (result.isConfirmed) {
                         const selectedMode = result.value;
+                        console.log('Check-in mode selected:', selectedMode);
                         $.ajax({
                             url: '/check-in',
                             type: 'POST',
@@ -391,6 +383,7 @@
                                 mode: selectedMode
                             },
                             success: function(response) {
+                                console.log('Check-in AJAX response:', response);
                                 if (response.success) {
                                     Swal.fire({
                                         icon: 'success',
@@ -402,6 +395,7 @@
                                             confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
                                         }
                                     }).then(() => {
+                                        console.log('Check-in success Swal closed');
                                         $('#attendanceControls').show();
                                         $('#attendanceBtn').css('background', 'linear-gradient(135deg, #ef4444, #b91c1c)').find('#attendanceText').text('Check-Out');
                                         $('#attendanceIcon').attr('src', '{{ asset('images/attendance/logout.png') }}');
@@ -426,6 +420,7 @@
                                 }
                             },
                             error: function(xhr) {
+                                console.log('Check-in AJAX error:', xhr);
                                 Swal.fire({
                                     icon: 'error',
                                     title: 'Error',
@@ -434,104 +429,187 @@
                                     customClass: {
                                         popup: 'rounded-lg',
                                         confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            } else {
+                console.log('Initiating check-out');
+                Swal.fire({
+                    title: 'Confirm Check-Out',
+                    text: 'Are you sure you want to check out? This action will log your logout time.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonText: 'Yes, Check Out',
+                    cancelButtonText: 'Cancel',
+                    customClass: {
+                        popup: 'rounded-lg',
+                        confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700',
+                        cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
+                    }
+                }).then((result) => {
+                    console.log('Check-out Swal result:', result);
+                    if (result.isConfirmed) {
+                        console.log('Sending check-out AJAX');
+                        $.ajax({
+                            url: '/check-out',
+                            type: 'POST',
+                            data: {
+                                _token: '{{ csrf_token() }}',
+                                total_work_seconds: totalWorkSeconds
+                            },
+                            success: function(response) {
+                                console.log('Check-out AJAX response:', JSON.stringify(response, null, 2));
+                                if (response.success) {
+                                    Swal.fire({
+                                        icon: 'success',
+                                        title: 'Success',
+                                        text: response.message,
+                                        confirmButtonText: 'OK',
+                                        customClass: {
+                                            popup: 'rounded-lg',
+                                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                        }
+                                    }).then(() => {
+                                        console.log('Check-out success Swal closed');
+                                        stopTimer();
+                                        $('#attendanceControls').hide();
+                                        $('#attendanceBtn').css('background', 'linear-gradient(135deg, #10b981, #059669)').find('#attendanceText').text('Check-In');
+                                        $('#attendanceIcon').attr('src', '{{ asset('images/attendance/check-in.png') }}');
+                                        $('#breakBtn').prop('disabled', true).css('opacity', '0.5');
+                                        $('#timerDisplay').hide().addClass('text-gray-800').removeClass('text-red-500');
+                                        $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                                        $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+                                        updateAttendanceTable();
+                                    });
+                                } else if (response.incomplete_tasks && response.incomplete_tasks.length > 0) {
+                                    console.log('Incomplete tasks detected:', response.incomplete_tasks);
+                                    let taskList = '<ul class="list-disc pl-5 mt-2 text-left text-xs">';
+                                    response.incomplete_tasks.forEach(task => {
+                                        const escapedTaskName = task.task_name.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\)/g, '&#41;').replace(/\(/g, '&#40;');
+                                        taskList += `<li class="mb-2"><a href="/my-tasks/${task.task_id}/details" class="text-blue-600 hover:underline font-medium">${escapedTaskName} (ID: ${task.task_id})</a></li>`;
+                                    });
+                                    taskList += '</ul>';
+                                    Swal.fire({
+                                        icon: 'warning',
+                                        title: 'Incomplete Tasks',
+                                        html: `
+                                            <div class="text-gray-700 text-xs">
+                                                <p class="mb-3">Please update the following tasks before checking out:</p>
+                                                ${taskList}
+                                            </div>
+                                        `,
+                                        confirmButtonText: 'Go to My Tasks',
+                                        cancelButtonText: 'Cancel',
+                                        showCancelButton: true,
+                                        customClass: {
+                                            popup: 'rounded-lg max-w-md',
+                                            title: 'text-lg font-bold text-gray-800',
+                                            htmlContainer: 'text-xs',
+                                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700',
+                                            cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
+                                        }
+                                    }).then((result) => {
+                                        console.log('Incomplete tasks Swal result:', result);
+                                        if (result.isConfirmed) {
+                                            window.location.href = '{{ route("my_tasks.index") }}';
                                         }
                                     });
-                                }
-                            });
-                        }
-                    });
-                } else {
-                    Swal.fire({
-                        title: 'Confirm Check-Out',
-                        text: 'Are you sure you want to check out? This action will log your logout time.',
-                        icon: 'warning',
-                        showCancelButton: true,
-                        confirmButtonText: 'Yes, Check Out',
-                        cancelButtonText: 'Cancel',
-                        customClass: {
-                            popup: 'rounded-lg',
-                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700',
-                            cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
-                        }
-                    }).then((result) => {
-                        if (result.isConfirmed) {
-                            $.ajax({
-                                url: '/check-out',
-                                type: 'POST',
-                                data: {
-                                    _token: '{{ csrf_token() }}',
-                                    total_work_seconds: totalWorkSeconds
-                                },
-                                success: function(response) {
-                                    if (response.success) {
-                                        Swal.fire({
-                                            icon: 'success',
-                                            title: 'Success',
-                                            text: 'Check-out successful.',
-                                            confirmButtonText: 'OK',
-                                            customClass: {
-                                                popup: 'rounded-lg',
-                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
-                                            }
-                                        }).then(() => {
-                                            stopTimer();
-                                            $('#attendanceControls').hide();
-                                            $('#attendanceBtn').css('background', 'linear-gradient(135deg, #10b981, #059669)').find('#attendanceText').text('Check-In');
-                                            $('#attendanceIcon').attr('src', '{{ asset('images/attendance/check-in.png') }}');
-                                            $('#breakBtn').prop('disabled', true).css('opacity', '0.5');
-                                            $('#timerDisplay').hide().addClass('text-gray-800').removeClass('text-red-500');
-                                            $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
-                                            $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
-                                            updateAttendanceTable();
-                                        });
-                                    } else if (response.incomplete_tasks && response.incomplete_tasks.length > 0) {
-                                        let taskList = '<ul class="list-disc pl-5 mt-2 text-left text-xs">';
-                                        response.incomplete_tasks.forEach(task => {
-                                            taskList += `<li class="mb-2"><a href="/my-tasks/${task.task_id}/details" class="text-blue-600 hover:underline font-medium">${task.task_name} (ID: ${task.task_id})</a></li>`;
-                                        });
-                                        taskList += '</ul>';
-                                        Swal.fire({
-                                            icon: 'warning',
-                                            title: 'Incomplete Tasks',
-                                            html: `
-                                                <div class="text-gray-700 text-xs">
-                                                    <p class="mb-3">Please update the following tasks before checking out:</p>
-                                                    ${taskList}
-                                                </div>
-                                            `,
-                                            confirmButtonText: 'Go to My Tasks',
-                                            cancelButtonText: 'Cancel',
-                                            showCancelButton: true,
-                                            customClass: {
-                                                popup: 'rounded-lg max-w-md',
-                                                title: 'text-lg font-bold text-gray-800',
-                                                htmlContainer: 'text-xs',
-                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700',
-                                                cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
-                                            }
-                                        }).then((result) => {
-                                            if (result.isConfirmed) {
-                                                window.location.href = '{{ route("my_tasks.index") }}';
-                                            }
-                                        });
-                                    } else {
-                                        Swal.fire({
-                                            icon: 'error',
-                                            title: 'Error',
-                                            text: 'Error: ' + response.message,
-                                            confirmButtonText: 'OK',
-                                            customClass: {
-                                                popup: 'rounded-lg',
-                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
-                                            }
-                                        });
-                                    }
-                                },
-                                error: function(xhr) {
+                                } else if (response.half_day_warning) {
+                                    console.log('Half-day warning triggered:', response);
+                                    Swal.fire({
+                                        icon: 'warning',
+                                        title: 'Half Day Warning',
+                                        html: `
+                                            <div class="text-gray-700 text-xs">
+                                                <p class="mb-3">${response.message.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\)/g, '&#41;').replace(/\(/g, '&#40;')}</p>
+                                                <p>Current work time: ${formatHours(response.total_work_seconds)}</p>
+                                                <p>Do you want to proceed with check-out? This will mark your attendance as 'Half Day'.</p>
+                                            </div>
+                                        `,
+                                        confirmButtonText: 'Proceed with Check-Out',
+                                        cancelButtonText: 'Cancel',
+                                        showCancelButton: true,
+                                        customClass: {
+                                            popup: 'rounded-lg max-w-md',
+                                            title: 'text-lg font-bold text-gray-800',
+                                            htmlContainer: 'text-xs',
+                                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700',
+                                            cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
+                                        }
+                                    }).then((result) => {
+                                        console.log('Half-day Swal result:', result);
+                                        if (result.isConfirmed) {
+                                            console.log('Sending force check-out AJAX');
+                                            $.ajax({
+                                                url: '/check-out',
+                                                type: 'POST',
+                                                data: {
+                                                    _token: '{{ csrf_token() }}',
+                                                    total_work_seconds: totalWorkSeconds,
+                                                    force_checkout: true
+                                                },
+                                                success: function(response) {
+                                                    console.log('Force check-out AJAX response:', response);
+                                                    if (response.success) {
+                                                        Swal.fire({
+                                                            icon: 'success',
+                                                            title: 'Success',
+                                                            text: response.message,
+                                                            confirmButtonText: 'OK',
+                                                            customClass: {
+                                                                popup: 'rounded-lg',
+                                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                                            }
+                                                        }).then(() => {
+                                                            console.log('Force check-out success Swal closed');
+                                                            stopTimer();
+                                                            $('#attendanceControls').hide();
+                                                            $('#attendanceBtn').css('background', 'linear-gradient(135deg, #10b981, #059669)').find('#attendanceText').text('Check-In');
+                                                            $('#attendanceIcon').attr('src', '{{ asset('images/attendance/check-in.png') }}');
+                                                            $('#breakBtn').prop('disabled', true).css('opacity', '0.5');
+                                                            $('#timerDisplay').hide().addClass('text-gray-800').removeClass('text-red-500');
+                                                            $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                                                            $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+                                                            updateAttendanceTable();
+                                                        });
+                                                    } else {
+                                                        Swal.fire({
+                                                            icon: 'error',
+                                                            title: 'Error',
+                                                            text: 'Error: ' + response.message,
+                                                            confirmButtonText: 'OK',
+                                                            customClass: {
+                                                                popup: 'rounded-lg',
+                                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                                            }
+                                                        });
+                                                    }
+                                                },
+                                                error: function(xhr) {
+                                                    console.log('Force check-out AJAX error:', xhr);
+                                                    Swal.fire({
+                                                        icon: 'error',
+                                                        title: 'Error',
+                                                        text: 'Check-out failed: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                                                        confirmButtonText: 'OK',
+                                                        customClass: {
+                                                            popup: 'rounded-lg',
+                                                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                                        }
+                                                    });
+                                                }
+                                            });
+                                        }
+                                    });
+                                } else {
+                                    console.log('Other check-out error:', response);
                                     Swal.fire({
                                         icon: 'error',
                                         title: 'Error',
-                                        text: 'Check-out failed: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                                        text: 'Error: ' + response.message,
                                         confirmButtonText: 'OK',
                                         customClass: {
                                             popup: 'rounded-lg',
@@ -539,71 +617,75 @@
                                         }
                                     });
                                 }
-                            });
-                        }
-                    });
-                }
-            });
+                            },
+                            error: function(xhr) {
+                                console.log('Check-out AJAX error:', xhr);
+                                Swal.fire({
+                                    icon: 'error',
+                                    title: 'Error',
+                                    text: 'Check-out failed: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                                    confirmButtonText: 'OK',
+                                    customClass: {
+                                        popup: 'rounded-lg',
+                                        confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                    }
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        });
 
-            // Break Button Click Handler
-            $('#breakBtn').on('click', function() {
-                const isBreakEnd = $('#breakText').text() === 'End Break';
-                const action = isBreakEnd ? 'end' : 'start';
-                $.ajax({
-                    url: '/break',
-                    type: 'POST',
-                    data: {
-                        _token: '{{ csrf_token() }}',
-                        action: action
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'Success',
-                                text: response.message,
-                                showConfirmButton: false,
-                                timer: 1000,
-                                timerProgressBar: true,
-                                customClass: {
-                                    popup: 'rounded-lg'
-                                }
-                            }).then(() => {
-                                if (action === 'start') {
-                                    stopTimer();
-                                    $('#breakBtn').find('#breakText').text('End Break');
-                                    $('#attendanceBtn').prop('disabled', true).css('opacity', '0.5');
-                                    $('#timerDisplay').addClass('text-red-500').removeClass('text-gray-800');
-                                    $('#pauseIcon').addClass('opacity-100').removeClass('opacity-0');
-                                    $('#breakPulse').addClass('opacity-100').removeClass('opacity-0');
-                                } else {
-                                    startTimer(totalWorkSeconds);
-                                    $('#breakBtn').find('#breakText').text('Start Break');
-                                    $('#attendanceBtn').prop('disabled', false).css('opacity', '1');
-                                    $('#timerDisplay').addClass('text-gray-800').removeClass('text-red-500');
-                                    $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
-                                    $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
-                                }
-                                updateAttendanceTable();
-                            });
-                        } else {
-                            Swal.fire({
-                                icon: 'error',
-                                title: 'Error',
-                                text: 'Error: ' + response.message,
-                                confirmButtonText: 'OK',
-                                customClass: {
-                                    popup: 'rounded-lg',
-                                    confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
-                                }
-                            });
-                        }
-                    },
-                    error: function(xhr) {
+        // Break Button Click Handler
+        $('#breakBtn').on('click', function() {
+            console.log('Break button clicked');
+            const isBreakEnd = $('#breakText').text() === 'End Break';
+            const action = isBreakEnd ? 'end' : 'start';
+            $.ajax({
+                url: '/break',
+                type: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    action: action
+                },
+                success: function(response) {
+                    console.log('Break AJAX response:', response);
+                    if (response.success) {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Success',
+                            text: response.message,
+                            showConfirmButton: false,
+                            timer: 1000,
+                            timerProgressBar: true,
+                            customClass: {
+                                popup: 'rounded-lg'
+                            }
+                        }).then(() => {
+                            console.log('Break success Swal closed');
+                            if (action === 'start') {
+                                stopTimer();
+                                $('#breakBtn').find('#breakText').text('End Break');
+                                $('#attendanceBtn').prop('disabled', true).css('opacity', '0.5');
+                                $('#timerDisplay').addClass('text-red-500').removeClass('text-gray-800');
+                                $('#pauseIcon').addClass('opacity-100').removeClass('opacity-0');
+                                $('#breakPulse').addClass('opacity-100').removeClass('opacity-0');
+                            } else {
+                                startTimer(totalWorkSeconds);
+                                $('#breakBtn').find('#breakText').text('Start Break');
+                                $('#attendanceBtn').prop('disabled', false).css('opacity', '1');
+                                $('#timerDisplay').addClass('text-gray-800').removeClass('text-red-500');
+                                $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                                $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+                            }
+                            updateAttendanceTable();
+                        });
+                    } else {
                         Swal.fire({
                             icon: 'error',
                             title: 'Error',
-                            text: 'Break action failed: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                            text: 'Error: ' + response.message,
                             confirmButtonText: 'OK',
                             customClass: {
                                 popup: 'rounded-lg',
@@ -611,29 +693,44 @@
                             }
                         });
                     }
-                });
-            });
-
-            // Prevent timer manipulation
-            $(window).on('focus blur', function(e) {
-                if (e.type === 'blur' && isTimerRunning) {
-                    stopTimer();
-                    $.ajax({
-                        url: '/sync-timer',
-                        type: 'POST',
-                        data: {
-                            _token: '{{ csrf_token() }}',
-                            total_work_seconds: totalWorkSeconds
-                        },
-                        success: function(response) {
-                            console.log('Timer synced on blur');
+                },
+                error: function(xhr) {
+                    console.log('Break AJAX error:', xhr);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Break action failed: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                        confirmButtonText: 'OK',
+                        customClass: {
+                            popup: 'rounded-lg',
+                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
                         }
                     });
-                } else if (e.type === 'focus' && $('#attendanceText').text() === 'Check-Out' && $('#breakText').text() === 'Start Break') {
-                    checkAttendanceStatus();
                 }
             });
         });
+
+        // Prevent timer manipulation
+        $(window).on('focus blur', function(e) {
+            console.log('Window event:', e.type);
+            if (e.type === 'blur' && isTimerRunning) {
+                stopTimer();
+                $.ajax({
+                    url: '/sync-timer',
+                    type: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        total_work_seconds: totalWorkSeconds
+                    },
+                    success: function(response) {
+                        console.log('Timer synced on blur');
+                    }
+                });
+            } else if (e.type === 'focus' && $('#attendanceText').text() === 'Check-Out' && $('#breakText').text() === 'Start Break') {
+                checkAttendanceStatus();
+            }
+        });
+    });
 </script>
 <style type="text/css">
     #attendanceBtn:hover:not(:disabled), #breakBtn:hover:not(:disabled) {
@@ -650,7 +747,6 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0.7; }
     }
-
     .text-red-500 {
         --tw-text-opacity: 1;
         color: rgb(239 68 68 / var(--tw-text-opacity, 1)) !important;

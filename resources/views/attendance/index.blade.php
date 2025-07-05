@@ -4,237 +4,1084 @@
 @php
     // Convert session privileges into a collection for easier access
     $attendancePrivileges = collect(session('user_privileges'));
+    $showControls = !in_array(Auth::user()->role_id, [2, 7]) || ($attendancePrivileges->has(12) && $attendancePrivileges->get(12)->can_edit);
 @endphp
-<div class="container">
-    <h1 class="mb-4">Attendance Records</h1>
+<div class="container px-6 py-6">
+    <h1 class="mt-5 mb-4 text-2xl font-bold text-gray-800" style="margin-top: 70px !important;">Attendance Records</h1>
 
     <!-- Filter Form -->
-    <form action="{{ route('attendance.index') }}" method="GET" class="mb-4">
-        <div class="row">
-            <!-- Start Date -->
-            <div class="col-md-2">
-                <label for="start_date">Start Date</label>
-                <input type="date" name="start_date" id="start_date" value="{{ $start_date }}" class="form-control">
-            </div>
-            <!-- End Date -->
-            <div class="col-md-2">
-                <label for="end_date">End Date</label>
-                <input type="date" name="end_date" id="end_date" value="{{ $end_date }}" class="form-control">
-            </div>
-            <!-- Name Filter -->
+    <form id="filterForm" action="{{ route('attendance.index') }}" method="GET" class="mb-4 bg-white p-4 rounded-lg shadow-md">
+        <div class="row g-3">
             <div class="col-md-3">
-                <label for="name">Staff Name</label>
-                <input type="text" name="name" id="name" value="{{ $nameFilter }}" class="form-control" placeholder="Enter name">
+                <label for="start_date" class="block text-xs font-medium text-gray-700">Start Date</label>
+                <input type="date" name="start_date" id="start_date" value="{{ $start_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1">
             </div>
-            <!-- Submit Button -->
+            <div class="col-md-3">
+                <label for="end_date" class="block text-xs font-medium text-gray-700">End Date</label>
+                <input type="date" name="end_date" id="end_date" value="{{ $end_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1">
+            </div>
+            <div class="col-md-3">
+                <label for="name" class="block text-xs font-medium text-gray-700">Staff Name</label>
+                <input type="text" name="name" id="name" value="{{ $nameFilter ?? '' }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1" placeholder="Enter name">
+            </div>
+            <div class="col-md-1 align-self-end">
+                <button type="submit" class="w-full bg-indigo-600 text-white py-1 px-2 rounded-md hover:bg-indigo-700 transition duration-300 ease-in-out transform hover:-translate-y-1">
+                    <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path>
+                    </svg>
+                </button>
+            </div>
             <div class="col-md-2 align-self-end">
-                <button type="submit" class="btn btn-primary w-100">Filter</button>
+                <a href="{{ route('attendance.todays_report') }}" target="_blank" class="w-full bg-yellow-500 text-white py-1 px-2 rounded-md hover:bg-yellow-600 transition duration-300 ease-in-out transform hover:-translate-y-1">Today's Report</a>
             </div>
-            <div class="col-md-2 align-self-end">
-                <a href="{{ route('attendance.todays_report') }}" target="_blank" class="btn btn-warning w-100">Today's Report</a>
-            </div>
-
         </div>
     </form>
 
+    <!-- Attendance Controls -->
+    @if($showControls)
+    <div id="attendanceControls" style="display: none;">
+        <div class="mb-4 bg-white p-2 rounded-lg shadow-md flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <button type="button" class="relative attendanceBtn" id="attendanceBtn" style="background: linear-gradient(135deg, #10b981, #059669); border: none; padding: 8px 16px; border-radius: 6px; color: white; font-weight: 600; transition: transform 0.3s ease, box-shadow 0.3s ease;">
+                    <img src="{{ asset('images/attendance/check-in.png') }}" alt="Check-In" class="inline-block w-5 h-5 mr-1.5" id="attendanceIcon" width="20" height="20">
+                    <span id="attendanceText">Check-In</span>
+                    <span class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center opacity-0 transition-opacity duration-300" id="attendancePulse">!</span>
+                </button>
+                <div class="flex items-center bg-gray-100 rounded-md px-3 py-1.5">
+                    <svg class="w-5 h-5 text-gray-600 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span id="timerDisplay" class="text-base font-mono text-gray-800" style="display: none;">00:00:00</span>
+                    <svg id="pauseIcon" class="w-8 h-8 text-red-500 opacity-0 transition-opacity duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6"></path>
+                    </svg>
+                </div>
+                <button type="button" class="relative breakBtn" id="breakBtn" style="background: linear-gradient(135deg, #f59e0b, #d97706); border: none; padding: 8px 16px; border-radius: 6px; color: white; font-weight: 600; transition: transform 0.3s ease, box-shadow 0.3s ease;" disabled>
+                    <img src="{{ asset('images/attendance/coffee-break.png') }}" alt="Break" class="inline-block w-5 h-5 mr-1.5" width="20" height="20">
+                    <span id="breakText">Start Break</span>
+                    <span class="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center opacity-0 transition-opacity duration-300" id="breakPulse">!</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    @endif
+
     <!-- Attendance Records Table -->
-    <div class="card card-bordered card-preview">
-        <div class="card-inner">
-            <table class="datatable-init-export table" data-export-title="Export">
-                <thead>
+    <div id="attendanceTableContainer">
+        @if($attendances->count() > 0)
+        <div class="bg-white rounded-lg shadow-md overflow-hidden">
+            <table class="table table-bordered w-full text-xs" id="tasksTable">
+                <thead class="bg-gray-50">
                     <tr>
-                        <th>Date</th>
-                        <th>Staff Name</th>
-                        <th>Role</th>
-                        <th>Department</th>
-                        <th>Login</th>
-                        <th>Logout</th>
-                        <th>Duration</th>
-                        <th>Mode</th>
-                        <th>System IP</th>
-                        <th>Status</th>
-                        <th>Actions</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff Name</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Login</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Logout</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Work Hours</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">System IP</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
-                <tbody>
-    @if($attendances->count() > 0)
-        @foreach($attendances as $attendance)
-            @php
-                $loginTime = \Carbon\Carbon::parse($attendance->created_at);
-                // If logout is null, use the current time for calculation.
-                if($attendance->logout) {
-                    $logoutTime = \Carbon\Carbon::parse($attendance->logout);
-                } else {
-                    $logoutTime = \Carbon\Carbon::now();
-                }
-                $totalMinutes = $logoutTime->diffInMinutes($loginTime);
-                $hours = floor($totalMinutes / 60);
-                $minutes = $totalMinutes % 60;
-            @endphp
-            <tr id="attendance_{{ $attendance->id }}">
-                <td>{{ $attendance->attendance_date }}</td>
-                <td>{{ $attendance->employee_name }}</td>
-                <td>{{ $attendance->role }}</td>
-                <td>{{ $attendance->department }}</td>
-                <td class="login-time">{{ $attendance->created_at }}</td>
-                <td class="logout-time">{{ $attendance->logout }}</td>
-                <td>
-                    @if($attendance->logout)
-                        {{ sprintf('%02d:%02d', $hours, $minutes) }}
-                    @else
-                        {{ sprintf('%02d:%02d', $hours, $minutes) }} (Since login)
-                    @endif
-                </td>
-                <td class="mode">{{ ucfirst($attendance->mode) }}</td>
-                <td>{{ $attendance->system_ip }}</td>
-                <td class="status">{{ ucfirst($attendance->approval_status) }}</td>
-                <td>
-                    @if($attendancePrivileges->has(12) && $attendancePrivileges->get(12)->can_edit)
-                        <button class="btn btn-sm btn-primary editAttendanceBtn"
-                            data-id="{{ $attendance->id }}"
-                            data-login="{{ $attendance->created_at }}"
-                            data-logout="{{ $attendance->logout }}"
-                            data-mode="{{ $attendance->mode }}">
-                            Edit
-                        </button>
-                    @else
-                        <button class="btn btn-sm btn-primary disabled" title="Not Authorized">
-                            Edit
-                        </button>
-                    @endif
-
-                    @if($attendance->approval_status !== 'approved')
-                        @if($attendancePrivileges->has(12) && $attendancePrivileges->get(12)->can_edit)
-                            <button class="btn btn-sm btn-success approveAttendanceBtn" data-id="{{ $attendance->id }}">
-                                Approve
-                            </button>
-                        @else
-                            <button class="btn btn-sm btn-success disabled" title="Not Authorized">
-                                Approve
-                            </button>
-                        @endif
-                    @else
-                        <span class="badge bg-success">Verified</span>
-                    @endif
-                </td>
-            </tr>
-        @endforeach
-    @else
-        <tr>
-            <td colspan="11" class="text-center">No attendance records found for the given criteria.</td>
-        </tr>
-    @endif
-</tbody>
-
+                <tbody class="bg-white divide-y divide-gray-200">
+                    @php
+                        $today = \Carbon\Carbon::today('Asia/Kolkata')->toDateString();
+                    @endphp
+                    @foreach($attendances as $attendance)
+                        <tr id="attendance_{{ $attendance->id }}" class="{{ is_null($attendance->logout) && $attendance->attendance_date == $today ? 'active-attendance' : '' }} hover:bg-gray-50 transition duration-150">
+                            <td class="px-4 py-2 whitespace-nowrap">{{ $attendance->attendance_date }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap">{{ $attendance->employee_name }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap">{{ $attendance->role }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap">{{ $attendance->department }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap login-time">{{ $attendance->created_at }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap logout-time">{{ $attendance->logout ? $attendance->logout : 'Still working' }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap total-work-hours">{{ number_format(floor(($attendance->total_work_seconds ?? 0) / 36) / 100, 2) }} hours</td>
+                            <td class="px-4 py-2 whitespace-nowrap mode">{{ ucfirst($attendance->mode) }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap">{{ $attendance->system_ip }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap status">{{ ucfirst($attendance->approval_status) }}</td>
+                            <td class="px-4 py-2 whitespace-nowrap">
+                                @if($attendancePrivileges->has(12) && $attendancePrivileges->get(12)->can_edit)
+                                    <button class="btn btn-sm btn-primary editAttendanceBtn"
+                                            data-id="{{ $attendance->id }}"
+                                            data-login="{{ $attendance->created_at }}"
+                                            data-logout="{{ $attendance->logout ?? '' }}"
+                                            data-mode="{{ $attendance->mode }}"
+                                            style="padding: 4px 8px; border-radius: 4px;">
+                                        Edit
+                                    </button>
+                                @else
+                                    <button class="btn btn-sm btn-primary disabled" title="Not Authorized" style="padding: 4px 8px; border-radius: 4px;">
+                                        Edit
+                                    </button>
+                                @endif
+                                @if($attendance->approval_status !== 'approved')
+                                    @if($attendancePrivileges->has(12) && $attendancePrivileges->get(12)->can_edit)
+                                        <button class="btn btn-sm btn-success approveAttendanceBtn" data-id="{{ $attendance->id }}" style="padding: 4px 8px; border-radius: 4px;">
+                                            Approve
+                                        </button>
+                                    @else
+                                        <button class="btn btn-sm btn-success disabled" title="Not Authorized" style="padding: 4px 8px; border-radius: 4px;">
+                                            Approve
+                                        </button>
+                                    @endif
+                                @else
+                                    <span class="badge bg-success" style="padding: 4px 8px; border-radius: 4px;">Verified</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
             </table>
         </div>
+        @else
+        <div class="bg-white rounded-lg shadow-md p-4 text-center text-gray-500 text-xs">
+            No attendance records found for the given criteria.
+        </div>
+        @endif
+    </div>
+
+    <!-- Edit Attendance Modal -->
+    <div class="modal fade" id="editAttendanceModal" tabindex="-1" aria-labelledby="editAttendanceModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="editAttendanceForm">
+                    @csrf
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="editAttendanceModalLabel">Edit Attendance</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="attendance_id" id="attendance_id">
+                        <div class="mb-3">
+                            <label for="edit_login" class="form-label">Login (Created At)</label>
+                            <input type="text" class="form-control" id="edit_login" name="login">
+                            <small class="form-text text-muted">Format: YYYY-MM-DD HH:MM:SS</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_logout" class="form-label">Logout</label>
+                            <input type="text" class="form-control" id="edit_logout" name="logout">
+                            <small class="form-text text-muted">Format: YYYY-MM-DD HH:MM:SS (leave blank if still working)</small>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_mode" class="form-label">Mode</label>
+                            <select class="form-control" id="edit_mode" name="mode">
+                                <option value="Work from office">Work from office</option>
+                                <option value="Half Day">Half Day</option>
+                                <option value="Work from Home">Work From Home</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Update Attendance</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 
-<!-- Edit Attendance Modal -->
-<div class="modal fade" id="editAttendanceModal" tabindex="-1" aria-labelledby="editAttendanceModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <form id="editAttendanceForm">
-        @csrf
-        <div class="modal-header">
-          <h5 class="modal-title" id="editAttendanceModalLabel">Edit Attendance</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-            <input type="hidden" name="attendance_id" id="attendance_id">
-            <div class="mb-3">
-                <label for="edit_login" class="form-label">Login (Created At)</label>
-                <input type="text" class="form-control" id="edit_login" name="login">
-                <small class="form-text text-muted">Format: YYYY-MM-DD HH:MM:SS</small>
-            </div>
-            <div class="mb-3">
-                <label for="edit_logout" class="form-label">Logout</label>
-                <input type="text" class="form-control" id="edit_logout" name="logout">
-                <small class="form-text text-muted">Format: YYYY-MM-DD HH:MM:SS</small>
-            </div>
-            <div class="mb-3">
-                <label for="edit_mode" class="form-label">Mode</label>
-                <select class="form-control" id="edit_mode" name="mode">
-                    <option value="Work from office">Work from office</option>
-                    <option value="Half Day">Half Day</option>
-                    <option value="Work from Home">Work From Home</option>
-                </select>
-            </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Update Attendance</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-<script src="{{ asset('assets1/jquery.min.js') }}"></script>
+    <!-- jQuery (CDN with local fallback) -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script>window.jQuery || document.write('<script src="{{ asset('assets1/jquery.min.js') }}"><\/script>')</script>
+    <!-- DataTables CSS (CDN) -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/2.1.8/css/dataTables.dataTables.min.css">
+    <!-- DataTables JS (CDN) -->
+    <script src="https://cdn.datatables.net/2.1.8/js/dataTables.min.js"></script>
+    <!-- SweetAlert2 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <!-- Bootstrap JS (for modal compatibility) -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    {{-- <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script> --}}
+    <!-- Tailwind CSS CDN for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
 
-<script>
-$(document).ready(function(){
+    <script>
+        // Timer variables
+        let timerInterval = null;
+        let totalWorkSeconds = 0;
+        let isTimerRunning = false;
+        let dataTable = null;
 
-    // Open edit modal and populate it with the current attendance data
-    $('.editAttendanceBtn').on('click', function(){
-        var id = $(this).data('id');
-        var login = $(this).data('login');
-        var logout = $(this).data('logout');
-        var mode = $(this).data('mode');
+        // Function to format seconds to decimal hours
+        function formatHours(seconds) {
+            const hours = Math.floor(seconds / 36) / 100;
+            return `${hours.toFixed(2)} hours`;
+        }
 
-        $('#attendance_id').val(id);
-        $('#edit_login').val(login);
-        $('#edit_logout').val(logout);
-        $('#edit_mode').val(mode);
+        // Function to format seconds to HH:MM:SS for timer display
+        function formatTime(seconds) {
+            const hrs = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
 
-        $('#editAttendanceModal').modal('show');
-    });
-
-    // Handle edit form submission via AJAX
-    $('#editAttendanceForm').on('submit', function(e){
-        e.preventDefault();
-        var formData = $(this).serialize();
-        $.ajax({
-            url: '{{ route("attendance.update") }}',
-            method: 'POST',
-            data: formData,
-            success: function(response){
-                // Update the table row with new values
-                var id = response.id;
-                var row = $('#attendance_' + id);
-                row.find('.login-time').text(response.created_at);
-                row.find('.logout-time').text(response.logout);
-                row.find('.mode').text(response.mode.charAt(0).toUpperCase() + response.mode.slice(1));
-                $('#editAttendanceModal').modal('hide');
-            },
-            error: function(xhr){
-                alert('Failed to update attendance.');
+        // Function to update timer display and table
+        function updateTimer() {
+            if (isTimerRunning) {
+                totalWorkSeconds++;
+                $('#timerDisplay').text(formatTime(totalWorkSeconds)).addClass('animate-pulse').addClass('text-gray-800').removeClass('text-red-500');
+                setTimeout(() => $('#timerDisplay').removeClass('animate-pulse'), 200);
+                const $activeRow = $('.active-attendance');
+                if ($activeRow.length) {
+                    $activeRow.find('.total-work-hours').text(formatHours(totalWorkSeconds));
+                }
             }
-        });
-    });
+        }
 
-    // Handle approve button click via AJAX
-    $('.approveAttendanceBtn').on('click', function(){
-        if (!confirm('Are you sure you want to approve this attendance record?')) return;
-        var btn = $(this);
-        var id = btn.data('id');
-        $.ajax({
-            url: '{{ route("attendance.approve") }}',
-            method: 'POST',
-            data: {
-                _token: '{{ csrf_token() }}',
-                attendance_id: id
-            },
-            success: function(response){
-                var row = $('#attendance_' + id);
-                row.find('.status').text('Verified');
-                btn.replaceWith('<span class="badge bg-success">Verified</span>');
-            },
-            error: function(xhr){
-                alert('Failed to approve attendance.');
+        // Function to start timer
+        function startTimer(startSeconds = 0) {
+            totalWorkSeconds = startSeconds;
+            isTimerRunning = true;
+            $('#timerDisplay').show().text(formatTime(totalWorkSeconds)).addClass('text-gray-800').removeClass('text-red-500');
+            $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+            timerInterval = setInterval(updateTimer, 1000);
+            $('#attendancePulse').addClass('opacity-100').removeClass('opacity-0');
+            $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+        }
+
+        // Function to stop timer
+        function stopTimer() {
+            isTimerRunning = false;
+            clearInterval(timerInterval);
+            $('#timerDisplay').show().text(formatTime(totalWorkSeconds)).addClass('text-red-500').removeClass('text-gray-800');
+            $('#attendancePulse').addClass('opacity-0').removeClass('opacity-100');
+        }
+
+        // Function to update attendance table
+        function updateAttendanceTable() {
+            const startDate = $('#start_date').val();
+            const endDate = $('#end_date').val();
+            const name = $('#name').val();
+            $.ajax({
+                url: '/fetch-attendances',
+                type: 'GET',
+                data: {
+                    start_date: startDate,
+                    end_date: endDate,
+                    name: name
+                },
+                success: function(response) {
+                    console.log('Fetch attendances response:', response);
+                    const tableContainer = $('#attendanceTableContainer');
+                    const today = '{{ \Carbon\Carbon::today('Asia/Kolkata')->toDateString() }}';
+                    if (response.attendances.length > 0) {
+                        let tableHtml = `
+                            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                                <table class="table table-bordered w-full text-xs" id="tasksTable">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Staff Name</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Login</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Logout</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Work Hours</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">System IP</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                        `;
+                        response.attendances.forEach(attendance => {
+                            const isActive = !attendance.logout && attendance.attendance_date === today;
+                            const hours = Math.floor((attendance.total_work_seconds || 0) / 36) / 100;
+                            const canEdit = {{ $attendancePrivileges->has(12) && $attendancePrivileges->get(12)->can_edit ? 'true' : 'false' }};
+                            const isApproved = attendance.approval_status === 'approved';
+                            tableHtml += `
+                                <tr id="attendance_${attendance.id}" class="${isActive ? 'active-attendance' : ''} hover:bg-gray-50 transition duration-150">
+                                    <td class="px-4 py-2 whitespace-nowrap">${attendance.attendance_date}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap">${attendance.employee_name}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap">${attendance.role}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap">${attendance.department}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap login-time">${attendance.created_at}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap logout-time">${attendance.logout ? attendance.logout : 'Still working'}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap total-work-hours">${hours.toFixed(2)} hours</td>
+                                    <td class="px-4 py-2 whitespace-nowrap mode">${attendance.mode.charAt(0).toUpperCase() + attendance.mode.slice(1)}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap">${attendance.system_ip}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap status">${attendance.approval_status.charAt(0).toUpperCase() + attendance.approval_status.slice(1)}</td>
+                                    <td class="px-4 py-2 whitespace-nowrap">
+                                        ${canEdit ? `
+                                            <button class="btn btn-sm btn-primary editAttendanceBtn"
+                                                    data-id="${attendance.id}"
+                                                    data-login="${attendance.created_at}"
+                                                    data-logout="${attendance.logout || ''}"
+                                                    data-mode="${attendance.mode}"
+                                                    style="padding: 4px 8px; border-radius: 4px;">
+                                                Edit
+                                            </button>
+                                        ` : `
+                                            <button class="btn btn-sm btn-primary disabled" title="Not Authorized" style="padding: 4px 8px; border-radius: 4px;">
+                                                Edit
+                                            </button>
+                                        `}
+                                        ${!isApproved && canEdit ? `
+                                            <button class="btn btn-sm btn-success approveAttendanceBtn" data-id="${attendance.id}" style="padding: 4px 8px; border-radius: 4px;">
+                                                Approve
+                                            </button>
+                                        ` : !isApproved ? `
+                                            <button class="btn btn-sm btn-success disabled" title="Not Authorized" style="padding: 4px 8px; border-radius: 4px;">
+                                                Approve
+                                            </button>
+                                        ` : `
+                                            <span class="badge bg-success" style="padding: 4px 8px; border-radius: 4px;">Verified</span>
+                                        `}
+                                    </td>
+                                </tr>
+                            `;
+                        });
+                        tableHtml += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                        tableContainer.html(tableHtml);
+                        if (dataTable) {
+                            dataTable.destroy();
+                        }
+                        dataTable = $('#tasksTable').DataTable({
+                            dom: "<'col-sm-12'tr>",
+                            paging: false,
+                            searching: false,
+                            ordering: true,
+                            info: false,
+                            autoWidth: false,
+                            responsive: true,
+                            language: {
+                                emptyTable: "No attendance records found for the given criteria."
+                            }
+                        });
+                        const $activeRow = $('.active-attendance');
+                        if ($activeRow.length) {
+                            $activeRow.find('.total-work-hours').text(formatHours(totalWorkSeconds));
+                        }
+                    } else {
+                        tableContainer.html(`
+                            <div class="bg-white rounded-lg shadow-md p-4 text-center text-gray-500 text-xs">
+                                No attendance records found for the given criteria.
+                            </div>
+                        `);
+                        if (dataTable) {
+                            dataTable.destroy();
+                            dataTable = null;
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Failed to fetch attendance records:', xhr.responseJSON?.message || 'An error occurred.');
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Failed to fetch attendance records: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                        confirmButtonText: 'OK',
+                        customClass: {
+                            popup: 'rounded-lg',
+                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                        }
+                    });
+                }
+            });
+        }
+
+        // Function to get current attendance status
+        function checkAttendanceStatus() {
+            $.ajax({
+                url: '/attendance-status',
+                type: 'GET',
+                success: function(response) {
+                    console.log('Attendance status:', response);
+                    if (response.isCheckedIn && !response.hasCheckedOut) {
+                        $('#attendanceControls').show();
+                        $('#attendanceBtn').css('background', 'linear-gradient(135deg, #ef4444, #b91c1c)').find('#attendanceText').text('Check-Out');
+                        $('#attendanceIcon').attr('src', '{{ asset('images/attendance/logout.png') }}');
+                        $('#breakBtn').prop('disabled', false).css('opacity', '1');
+                        totalWorkSeconds = response.totalWorkSeconds;
+                        if (response.isOnBreak) {
+                            stopTimer();
+                            $('#breakBtn').find('#breakText').text('End Break');
+                            $('#attendanceBtn').prop('disabled', true).css('opacity', '0.5');
+                            $('#timerDisplay').show().text(formatTime(totalWorkSeconds)).addClass('text-red-500').removeClass('text-gray-800');
+                            $('#pauseIcon').addClass('opacity-100').removeClass('opacity-0');
+                            $('#breakPulse').addClass('opacity-100').removeClass('opacity-0');
+                            const $activeRow = $('.active-attendance');
+                            if ($activeRow.length) {
+                                $activeRow.find('.total-work-hours').text(formatHours(totalWorkSeconds));
+                            }
+                        } else {
+                            startTimer(response.totalWorkSeconds);
+                            $('#breakBtn').find('#breakText').text('Start Break');
+                            $('#attendanceBtn').prop('disabled', false).css('opacity', '1');
+                            $('#timerDisplay').addClass('text-gray-800').removeClass('text-red-500');
+                            $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                            $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+                        }
+                    } else {
+                        if (response.hasCheckedOut) {
+                            $('#attendanceControls').hide();
+                        } else {
+                            $('#attendanceControls').show();
+                            $('#attendanceBtn').css('background', 'linear-gradient(135deg, #10b981, #059669)').find('#attendanceText').text('Check-In');
+                            $('#attendanceIcon').attr('src', '{{ asset('images/attendance/check-in.png') }}');
+                            $('#breakBtn').prop('disabled', true).css('opacity', '0.5');
+                            $('#timerDisplay').hide().addClass('text-gray-800').removeClass('text-red-500');
+                            $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                            $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+                            stopTimer();
+                        }
+                    }
+                    updateAttendanceTable();
+                },
+                error: function(xhr) {
+                    console.error('Failed to fetch attendance status:', xhr.responseJSON?.message || 'An error occurred.');
+                    $('#attendanceControls').hide();
+                    $('#timerDisplay').addClass('text-gray-800').removeClass('text-red-500');
+                    $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Failed to fetch attendance status: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                        confirmButtonText: 'OK',
+                        customClass: {
+                            popup: 'rounded-lg',
+                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                        }
+                    });
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded');
+            // Initialize Bootstrap modals
+            try {
+                const editModalElement = document.getElementById('editAttendanceModal');
+                if (editModalElement && typeof bootstrap !== 'undefined') {
+                    const editModal = new bootstrap.Modal(editModalElement);
+                    console.log('Bootstrap modal initialized');
+                } else {
+                    console.error('Bootstrap modal or element not found');
+                }
+            } catch (e) {
+                console.error('Bootstrap modal initialization failed:', e);
             }
+
+            @if($attendances->count() > 0)
+            setTimeout(function() {
+                try {
+                    dataTable = $('#tasksTable').DataTable({
+                        dom: "<'col-sm-12'tr>",
+                        paging: false,
+                        searching: false,
+                        ordering: true,
+                        info: false,
+                        autoWidth: false,
+                        responsive: true,
+                        language: {
+                            emptyTable: "No attendance records found for the given criteria."
+                        }
+                    });
+                    console.log('DataTable initialized');
+                } catch (e) {
+                    console.error('DataTables initialization failed:', e);
+                }
+            }, 100);
+            @endif
+
+            checkAttendanceStatus();
         });
-    });
-});
-</script>
+
+        $(document).ready(function() {
+            console.log('Document ready');
+
+            // Attendance Button Click Handler
+            $('#attendanceBtn').on('click', function() {
+                console.log('Attendance button clicked');
+                const isCheckOut = $('#attendanceText').text() === 'Check-Out';
+                if (!isCheckOut) {
+                    console.log('Initiating check-in');
+                    Swal.fire({
+                        title: 'Select Work Mode',
+                        html: `
+                            <select id="mode" class="swal2-select" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #d1d5db; font-size: 14px;">
+                                <option value="">Choose Mode</option>
+                                <option value="Work from office">Work from office</option>
+                                <option value="Half Day">Half Day</option>
+                                <option value="Work from Home">Work From Home</option>
+                            </select>
+                        `,
+                        showCancelButton: true,
+                        confirmButtonText: 'Check In',
+                        cancelButtonText: 'Cancel',
+                        focusConfirm: false,
+                        customClass: {
+                            popup: 'rounded-lg',
+                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700',
+                            cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
+                        },
+                        preConfirm: () => {
+                            const mode = document.getElementById('mode').value;
+                            if (!mode) {
+                                Swal.showValidationMessage('Please select a work mode');
+                                return false;
+                            }
+                            return mode;
+                        }
+                    }).then((result) => {
+                        console.log('Check-in Swal result:', result);
+                        if (result.isConfirmed) {
+                            const selectedMode = result.value;
+                            console.log('Check-in mode selected:', selectedMode);
+                            $.ajax({
+                                url: '/check-in',
+                                type: 'POST',
+                                data: {
+                                    _token: '{{ csrf_token() }}',
+                                    mode: selectedMode
+                                },
+                                success: function(response) {
+                                    console.log('Check-in AJAX response:', response);
+                                    if (response.success) {
+                                        Swal.fire({
+                                            icon: 'success',
+                                            title: 'Success',
+                                            text: 'Check-in successful',
+                                            confirmButtonText: 'OK',
+                                            customClass: {
+                                                popup: 'rounded-lg',
+                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                            }
+                                        }).then(() => {
+                                            console.log('Check-in success Swal closed');
+                                            $('#attendanceControls').show();
+                                            $('#attendanceBtn').css('background', 'linear-gradient(135deg, #ef4444, #b91c1c)').find('#attendanceText').text('Check-Out');
+                                            $('#attendanceIcon').attr('src', '{{ asset('images/attendance/logout.png') }}');
+                                            $('#breakBtn').prop('disabled', false).css('opacity', '1');
+                                            $('#timerDisplay').addClass('text-gray-800').removeClass('text-red-500');
+                                            $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                                            $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+                                            startTimer(0);
+                                            updateAttendanceTable();
+                                        });
+                                    } else {
+                                        Swal.fire({
+                                            icon: 'error',
+                                            title: 'Error',
+                                            text: 'Error: ' + response.message,
+                                            confirmButtonText: 'OK',
+                                            customClass: {
+                                                popup: 'rounded-lg',
+                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                            }
+                                        });
+                                    }
+                                },
+                                error: function(xhr) {
+                                    console.log('Check-in AJAX error:', xhr);
+                                    Swal.fire({
+                                        icon: 'error',
+                                        title: 'Error',
+                                        text: 'Check-in failed: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                                        confirmButtonText: 'OK',
+                                        customClass: {
+                                            popup: 'rounded-lg',
+                                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    });
+                } else {
+                    console.log('Initiating check-out');
+                    Swal.fire({
+                        title: 'Confirm Check-Out',
+                        text: 'Are you sure you want to check out? This action will log your logout time.',
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Yes, Check Out',
+                        cancelButtonText: 'Cancel',
+                        customClass: {
+                            popup: 'rounded-lg',
+                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700',
+                            cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
+                        }
+                    }).then((result) => {
+                        console.log('Check-out Swal result:', result);
+                        if (result.isConfirmed) {
+                            console.log('Sending check-out AJAX');
+                            $.ajax({
+                                url: '/check-out',
+                                type: 'POST',
+                                data: {
+                                    _token: '{{ csrf_token() }}',
+                                    total_work_seconds: totalWorkSeconds
+                                },
+                                success: function(response) {
+                                    console.log('Check-out AJAX response:', JSON.stringify(response, null, 2));
+                                    if (response.success) {
+                                        Swal.fire({
+                                            icon: 'success',
+                                            title: 'Success',
+                                            text: response.message,
+                                            confirmButtonText: 'OK',
+                                            customClass: {
+                                                popup: 'rounded-lg',
+                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                            }
+                                        }).then(() => {
+                                            console.log('Check-out success Swal closed');
+                                            stopTimer();
+                                            $('#attendanceControls').hide();
+                                            $('#attendanceBtn').css('background', 'linear-gradient(135deg, #10b981, #059669)').find('#attendanceText').text('Check-In');
+                                            $('#attendanceIcon').attr('src', '{{ asset('images/attendance/check-in.png') }}');
+                                            $('#breakBtn').prop('disabled', true).css('opacity', '0.5');
+                                            $('#timerDisplay').hide().addClass('text-gray-800').removeClass('text-red-500');
+                                            $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                                            $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+                                            updateAttendanceTable();
+                                        });
+                                    } else if (response.incomplete_tasks && response.incomplete_tasks.length > 0) {
+                                        console.log('Incomplete tasks detected:', response.incomplete_tasks);
+                                        let taskList = '<ul class="list-disc pl-5 mt-2 text-left text-xs">';
+                                        response.incomplete_tasks.forEach(task => {
+                                            const escapedTaskName = task.task_name.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\)/g, ')').replace(/\(/g, '(');
+                                            taskList += `<li class="mb-2"><a href="/my-tasks/${task.task_id}/details" class="text-blue-600 hover:underline font-medium">${escapedTaskName} (ID: ${task.task_id})</a></li>`;
+                                        });
+                                        taskList += '</ul>';
+                                        Swal.fire({
+                                            icon: 'warning',
+                                            title: 'Incomplete Tasks',
+                                            html: `
+                                                <div class="text-gray-700 text-xs">
+                                                    <p class="mb-3">Please update the following tasks before checking out:</p>
+                                                    ${taskList}
+                                                </div>
+                                            `,
+                                            confirmButtonText: 'Go to My Tasks',
+                                            cancelButtonText: 'Cancel',
+                                            showCancelButton: true,
+                                            customClass: {
+                                                popup: 'rounded-lg max-w-md',
+                                                title: 'text-lg font-bold text-gray-800',
+                                                htmlContainer: 'text-xs',
+                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700',
+                                                cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
+                                            }
+                                        }).then((result) => {
+                                            console.log('Incomplete tasks Swal result:', result);
+                                            if (result.isConfirmed) {
+                                                window.location.href = '{{ route("my_tasks.index") }}';
+                                            }
+                                        });
+                                    } else if (response.half_day_warning) {
+                                        console.log('Half-day warning triggered:', response);
+                                        Swal.fire({
+                                            icon: 'warning',
+                                            title: 'Half Day Warning',
+                                            html: `
+                                                <div class="text-gray-700 text-xs">
+                                                    <p class="mb-3">${response.message.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\)/g, ')').replace(/\(/g, '(')}</p>
+                                                    <p>Current work time: ${formatHours(response.total_work_seconds)}</p>
+                                                    <p>Do you want to proceed with check-out? This will mark your attendance as 'Half Day'.</p>
+                                                </div>
+                                            `,
+                                            confirmButtonText: 'Proceed with Check-Out',
+                                            cancelButtonText: 'Cancel',
+                                            showCancelButton: true,
+                                            customClass: {
+                                                popup: 'rounded-lg max-w-md',
+                                                title: 'text-lg font-bold text-gray-800',
+                                                htmlContainer: 'text-xs',
+                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700',
+                                                cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
+                                            }
+                                        }).then((result) => {
+                                            console.log('Half-day Swal result:', result);
+                                            if (result.isConfirmed) {
+                                                console.log('Sending force check-out AJAX');
+                                                $.ajax({
+                                                    url: '/check-out',
+                                                    type: 'POST',
+                                                    data: {
+                                                        _token: '{{ csrf_token() }}',
+                                                        total_work_seconds: totalWorkSeconds,
+                                                        force_checkout: true
+                                                    },
+                                                    success: function(response) {
+                                                        console.log('Force check-out AJAX response:', response);
+                                                        if (response.success) {
+                                                            Swal.fire({
+                                                                icon: 'success',
+                                                                title: 'Success',
+                                                                text: response.message,
+                                                                confirmButtonText: 'OK',
+                                                                customClass: {
+                                                                    popup: 'rounded-lg',
+                                                                    confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                                                }
+                                                            }).then(() => {
+                                                                console.log('Force check-out success Swal closed');
+                                                                stopTimer();
+                                                                $('#attendanceControls').hide();
+                                                                $('#attendanceBtn').css('background', 'linear-gradient(135deg, #10b981, #059669)').find('#attendanceText').text('Check-In');
+                                                                $('#attendanceIcon').attr('src', '{{ asset('images/attendance/check-in.png') }}');
+                                                                $('#breakBtn').prop('disabled', true).css('opacity', '0.5');
+                                                                $('#timerDisplay').hide().addClass('text-gray-800').removeClass('text-red-500');
+                                                                $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                                                                $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+                                                                updateAttendanceTable();
+                                                            });
+                                                        } else {
+                                                            Swal.fire({
+                                                                icon: 'error',
+                                                                title: 'Error',
+                                                                text: 'Error: ' + response.message,
+                                                                confirmButtonText: 'OK',
+                                                                customClass: {
+                                                                    popup: 'rounded-lg',
+                                                                    confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                                                }
+                                                            });
+                                                        }
+                                                    },
+                                                    error: function(xhr) {
+                                                        console.log('Force check-out AJAX error:', xhr);
+                                                        Swal.fire({
+                                                            icon: 'error',
+                                                            title: 'Error',
+                                                            text: 'Check-out failed: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                                                            confirmButtonText: 'OK',
+                                                            customClass: {
+                                                                popup: 'rounded-lg',
+                                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                                            }
+                                                        });
+                                                    }
+                                                });
+                                            }
+                                        });
+                                    } else {
+                                        console.log('Other check-out error:', response);
+                                        Swal.fire({
+                                            icon: 'error',
+                                            title: 'Error',
+                                            text: 'Error: ' + response.message,
+                                            confirmButtonText: 'OK',
+                                            customClass: {
+                                                popup: 'rounded-lg',
+                                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                            }
+                                        });
+                                    }
+                                },
+                                error: function(xhr) {
+                                    console.log('Check-out AJAX error:', xhr);
+                                    Swal.fire({
+                                        icon: 'error',
+                                        title: 'Error',
+                                        text: 'Check-out failed: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                                        confirmButtonText: 'OK',
+                                        customClass: {
+                                            popup: 'rounded-lg',
+                                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+
+            // Break Button Click Handler
+            $('#breakBtn').on('click', function() {
+                console.log('Break button clicked');
+                const isBreakEnd = $('#breakText').text() === 'End Break';
+                const action = isBreakEnd ? 'end' : 'start';
+                $.ajax({
+                    url: '/break',
+                    type: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        action: action
+                    },
+                    success: function(response) {
+                        console.log('Break AJAX response:', response);
+                        if (response.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Success',
+                                text: response.message,
+                                showConfirmButton: false,
+                                timer: 1000,
+                                timerProgressBar: true,
+                                customClass: {
+                                    popup: 'rounded-lg'
+                                }
+                            }).then(() => {
+                                console.log('Break success Swal closed');
+                                if (action === 'start') {
+                                    stopTimer();
+                                    $('#breakBtn').find('#breakText').text('End Break');
+                                    $('#attendanceBtn').prop('disabled', true).css('opacity', '0.5');
+                                    $('#timerDisplay').addClass('text-red-500').removeClass('text-gray-800');
+                                    $('#pauseIcon').addClass('opacity-100').removeClass('opacity-0');
+                                    $('#breakPulse').addClass('opacity-100').removeClass('opacity-0');
+                                } else {
+                                    startTimer(totalWorkSeconds);
+                                    $('#breakBtn').find('#breakText').text('Start Break');
+                                    $('#attendanceBtn').prop('disabled', false).css('opacity', '1');
+                                    $('#timerDisplay').addClass('text-gray-800').removeClass('text-red-500');
+                                    $('#pauseIcon').addClass('opacity-0').removeClass('opacity-100');
+                                    $('#breakPulse').addClass('opacity-0').removeClass('opacity-100');
+                                }
+                                updateAttendanceTable();
+                            });
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Error',
+                                text: 'Error: ' + response.message,
+                                confirmButtonText: 'OK',
+                                customClass: {
+                                    popup: 'rounded-lg',
+                                    confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                                }
+                            });
+                        }
+                    },
+                    error: function(xhr) {
+                        console.log('Break AJAX error:', xhr);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'Break action failed: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                            confirmButtonText: 'OK',
+                            customClass: {
+                                popup: 'rounded-lg',
+                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                            }
+                        });
+                    }
+                });
+            });
+
+            // Edit Attendance Button Click Handler (using event delegation)
+            $(document).on('click', '.editAttendanceBtn', function() {
+                console.log('Edit button clicked');
+                try {
+                    const id = $(this).data('id');
+                    const login = $(this).data('login');
+                    const logout = $(this).data('logout');
+                    const mode = $(this).data('mode');
+
+                    console.log('Edit data:', { id, login, logout, mode });
+
+                    $('#attendance_id').val(id);
+                    $('#edit_login').val(login);
+                    $('#edit_logout').val(logout || '');
+                    $('#edit_mode').val(mode);
+
+                    const editModalElement = document.getElementById('editAttendanceModal');
+                    if (editModalElement && typeof bootstrap !== 'undefined') {
+                        const editModal = new bootstrap.Modal(editModalElement);
+                        editModal.show();
+                        console.log('Edit modal shown');
+                    } else {
+                        console.error('Bootstrap modal or element not found');
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'Modal initialization failed. Please ensure Bootstrap is loaded correctly.',
+                            confirmButtonText: 'OK',
+                            customClass: {
+                                popup: 'rounded-lg',
+                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error('Error opening edit modal:', e);
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Error',
+                        text: 'Failed to open edit modal: ' + e.message,
+                        confirmButtonText: 'OK',
+                        customClass: {
+                            popup: 'rounded-lg',
+                            confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                        }
+                    });
+                }
+            });
+
+            // Handle edit form submission via AJAX
+            $('#editAttendanceForm').on('submit', function(e) {
+                e.preventDefault();
+                console.log('Edit form submitted');
+                const formData = $(this).serialize();
+                $.ajax({
+                    url: '{{ route("attendance.update") }}',
+                    method: 'POST',
+                    data: formData,
+                    success: function(response) {
+                        console.log('Edit AJAX response:', response);
+                        const id = response.id;
+                        const row = $('#attendance_' + id);
+                        row.find('.login-time').text(response.created_at);
+                        row.find('.logout-time').text(response.logout || 'Still working');
+                        row.find('.mode').text(response.mode.charAt(0).toUpperCase() + response.mode.slice(1));
+                        const editModalElement = document.getElementById('editAttendanceModal');
+                        if (editModalElement && typeof bootstrap !== 'undefined') {
+                            const editModal = bootstrap.Modal.getInstance(editModalElement);
+                            editModal.hide();
+                        }
+                        updateAttendanceTable(); // Refresh table to ensure consistency
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Success',
+                            text: 'Attendance updated successfully',
+                            confirmButtonText: 'OK',
+                            customClass: {
+                                popup: 'rounded-lg',
+                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                            }
+                        });
+                    },
+                    error: function(xhr) {
+                        console.error('Edit AJAX error:', xhr);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'Failed to update attendance: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                            confirmButtonText: 'OK',
+                            customClass: {
+                                popup: 'rounded-lg',
+                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                            }
+                        });
+                    }
+                });
+            });
+
+            // Handle approve button click via AJAX
+            $(document).on('click', '.approveAttendanceBtn', function() {
+                console.log('Approve button clicked');
+                if (!confirm('Are you sure you want to approve this attendance record?')) return;
+                const btn = $(this);
+                const id = btn.data('id');
+                $.ajax({
+                    url: '{{ route("attendance.approve") }}',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        attendance_id: id
+                    },
+                    success: function(response) {
+                        console.log('Approve AJAX response:', response);
+                        const row = $('#attendance_' + id);
+                        row.find('.status').text('Verified');
+                        btn.replaceWith('<span class="badge bg-success" style="padding: 4px 8px; border-radius: 4px;">Verified</span>');
+                        updateAttendanceTable(); // Refresh table to ensure consistency
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Success',
+                            text: 'Attendance approved successfully',
+                            confirmButtonText: 'OK',
+                            customClass: {
+                                popup: 'rounded-lg',
+                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                            }
+                        });
+                    },
+                    error: function(xhr) {
+                        console.error('Approve AJAX error:', xhr);
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: 'Failed to approve attendance: ' + (xhr.responseJSON?.message || 'An error occurred.'),
+                            confirmButtonText: 'OK',
+                            customClass: {
+                                popup: 'rounded-lg',
+                                confirmButton: 'bg-indigo-600 text-white px-3 py-1.5 rounded-md hover:bg-indigo-700'
+                            }
+                        });
+                    }
+                });
+            });
+
+            // Prevent timer manipulation
+            $(window).on('focus blur', function(e) {
+                console.log('Window event:', e.type);
+                if (e.type === 'blur' && isTimerRunning) {
+                    stopTimer();
+                    $.ajax({
+                        url: '/sync-timer',
+                        type: 'POST',
+                        data: {
+                            _token: '{{ csrf_token() }}',
+                            total_work_seconds: totalWorkSeconds
+                        },
+                        success: function(response) {
+                            console.log('Timer synced on blur');
+                        },
+                        error: function(xhr) {
+                            console.error('Timer sync error:', xhr);
+                        }
+                    });
+                } else if (e.type === 'focus' && $('#attendanceText').text() === 'Check-Out' && $('#breakText').text() === 'Start Break') {
+                    checkAttendanceStatus();
+                }
+            });
+        });
+    </script>
+    <style type="text/css">
+        #attendanceBtn:hover:not(:disabled), #breakBtn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        #attendanceBtn:disabled, #breakBtn:disabled {
+            cursor: not-allowed;
+        }
+        .animate-pulse {
+            animation: pulse 0.3s ease-in-out;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .text-red-500 {
+            --tw-text-opacity: 1;
+            color: rgb(239 68 68 / var(--tw-text-opacity, 1)) !important;
+        }
+        /* Ensure Bootstrap modal styles are not overridden by Tailwind */
+        .modal-content {
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .modal-header, .modal-footer {
+            border-color: #e5e7eb;
+        }
+        .btn-close {
+            background-size: 1rem;
+        }
+        .form-control {
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+        }
+        .form-label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+        }
+    </style>
 @endsection

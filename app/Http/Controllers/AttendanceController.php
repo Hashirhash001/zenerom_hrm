@@ -24,6 +24,7 @@ class AttendanceController extends Controller
 
         $start_date = $request->get('start_date', Carbon::today('Asia/Kolkata')->toDateString());
         $end_date = $request->get('end_date', Carbon::today('Asia/Kolkata')->toDateString());
+        $nameFilter = $request->get('name'); // Retrieve the 'name' query parameter
 
         $query = DB::table('staff_attendance')
             ->join('employees', 'staff_attendance.user_id', '=', 'employees.id')
@@ -37,6 +38,16 @@ class AttendanceController extends Controller
             );
 
         $query->whereBetween('attendance_date', [$start_date, $end_date]);
+
+        // Apply name filter if provided
+        if ($nameFilter) {
+            $query->where(function ($q) use ($nameFilter) {
+                $q->where('employees.first_name', 'LIKE', "%{$nameFilter}%")
+                ->orWhere('employees.middle_name', 'LIKE', "%{$nameFilter}%")
+                ->orWhere('employees.last_name', 'LIKE', "%{$nameFilter}%")
+                ->orWhere('employees.employee_id', 'LIKE', "%{$nameFilter}%");
+            });
+        }
 
         if (in_array($user->role_id, [1, 2, 7, 9])) {
             // No additional filtering
@@ -54,10 +65,10 @@ class AttendanceController extends Controller
         $attendances = $query->orderBy('attendance_date', 'desc')->get();
 
         if (in_array($user->role_id, [2, 7])) {
-            return view('attendance.index', compact('attendances', 'start_date', 'end_date'));
+            return view('attendance.index', compact('attendances', 'start_date', 'end_date', 'nameFilter'));
         }
 
-        return view('attendance.staffindex', compact('attendances', 'start_date', 'end_date'));
+        return view('attendance.staffindex', compact('attendances', 'start_date', 'end_date', 'nameFilter'));
     }
 
     public function fetchAttendances(Request $request)
@@ -149,7 +160,7 @@ class AttendanceController extends Controller
         $today = Carbon::today('Asia/Kolkata')->toDateString();
         $now = Carbon::now('Asia/Kolkata');
 
-        // Check for today's task assignments for this staff
+        // Check for incomplete tasks
         $assignments = DB::table('task_assigned')
             ->where('staff_id', $userId)
             ->whereDate('date', $today)
@@ -181,31 +192,70 @@ class AttendanceController extends Controller
             }
         }
 
-        // Update total_work_seconds before setting logout time
+        // Fetch current attendance record
         $attendance = DB::table('staff_attendance')
             ->where('user_id', $userId)
             ->whereDate('attendance_date', $today)
             ->first();
 
-        if ($attendance && !$attendance->logout && $attendance->last_timer_start) {
-            $totalWorkSeconds = $attendance->total_work_seconds + Carbon::now('Asia/Kolkata')->diffInSeconds(Carbon::parse($attendance->last_timer_start));
-            DB::table('staff_attendance')
-                ->where('user_id', $userId)
-                ->whereDate('attendance_date', $today)
-                ->update([
-                    'total_work_seconds' => $totalWorkSeconds,
-                    'logout' => $now->toDateTimeString(),
-                    'last_timer_start' => null
-                ]);
-        } else {
-            DB::table('staff_attendance')
-                ->where('user_id', $userId)
-                ->whereDate('attendance_date', $today)
-                ->update([
-                    'logout' => $now->toDateTimeString(),
-                    'last_timer_start' => null
-                ]);
+        if (!$attendance || $attendance->logout) {
+            return response()->json([
+                'success' => false,
+                'message' => $attendance ? 'You have already checked out today.' : 'No check-in record found for today.'
+            ], 400);
         }
+
+        // Calculate total work time
+        $totalWorkSeconds = $attendance->total_work_seconds;
+        if ($attendance->last_timer_start && !$this->isOnBreak($attendance->id)) {
+            $totalWorkSeconds += Carbon::now('Asia/Kolkata')->diffInSeconds(Carbon::parse($attendance->last_timer_start));
+        }
+
+        // Check if total work time is less than 8 hours (28,800 seconds)
+        $isHalfDay = $totalWorkSeconds < 28800;
+        $halfDayMessage = $isHalfDay ? 'Your total work time is less than 8 hours. This will be marked as a half day.' : null;
+
+        // If forced check-out (confirmed despite half-day warning), update the record
+        if ($request->input('force_checkout')) {
+            $updateData = [
+                'total_work_seconds' => $totalWorkSeconds,
+                'logout' => $now->toDateTimeString(),
+                'last_timer_start' => null
+            ];
+
+            // Only update mode to 'Half Day' if it wasn't explicitly set to 'Half Day' during check-in
+            if ($isHalfDay && $attendance->mode !== 'Half Day') {
+                $updateData['mode'] = 'Half Day';
+            }
+
+            DB::table('staff_attendance')
+                ->where('id', $attendance->id)
+                ->update($updateData);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Check-out successful.' . ($isHalfDay && $attendance->mode !== 'Half Day' ? ' Marked as a half day.' : '')
+            ]);
+        }
+
+        // If less than 8 hours, return half-day warning
+        if ($isHalfDay && $attendance->mode !== 'Half Day') {
+            return response()->json([
+                'success' => false,
+                'half_day_warning' => true,
+                'message' => $halfDayMessage,
+                'total_work_seconds' => $totalWorkSeconds
+            ]);
+        }
+
+        // Proceed with check-out if 8+ hours or mode is already 'Half Day'
+        DB::table('staff_attendance')
+            ->where('id', $attendance->id)
+            ->update([
+                'total_work_seconds' => $totalWorkSeconds,
+                'logout' => $now->toDateTimeString(),
+                'last_timer_start' => null
+            ]);
 
         return response()->json([
             'success' => true,

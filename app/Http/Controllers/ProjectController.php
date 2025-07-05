@@ -17,34 +17,58 @@ class ProjectController extends Controller
     /**
      * Display a listing of projects.
      */
-public function index()
-{
-    $user = Auth::user();
+    public function index()
+    {
+        $user = Auth::user();
 
-    if ($user->role_id == 3) {
-        // Get the user's department id from their employee record.
-        $departmentId = optional($user->employee)->department_id;
+        if ($user->role_id == 3) {
+            // Get the user's department id from their employee record.
+            $departmentId = optional($user->employee)->department_id;
 
-        // Retrieve only projects that have a service assigned from the user's department.
-        $projects = Project::join('project_services', 'projects.id', '=', 'project_services.project_id')
-            ->join('services', 'services.id', '=', 'project_services.service_id')
-            ->join('departments', 'departments.id', '=', 'services.department_id')
-            ->where('departments.id', $departmentId)
-            ->groupBy('projects.id')
-            ->orderByDesc('projects.onboarded_time')
-            ->select('projects.*')
-            ->get();
-    } else {
-        // For other roles, retrieve all projects.
-        $projects = Project::latest()->get();
+            // Retrieve only projects that have a service assigned from the user's department.
+            $projects = Project::join('project_services', 'projects.id', '=', 'project_services.project_id')
+                ->join('services', 'services.id', '=', 'project_services.service_id')
+                ->join('departments', 'departments.id', '=', 'services.department_id')
+                ->where('departments.id', $departmentId)
+                ->groupBy(
+                    'projects.id',
+                    'projects.customer_id',
+                    'projects.name',
+                    'projects.requirements',
+                    'projects.status',
+                    'projects.onboarded_time',
+                    'projects.payment_status',
+                    'projects.payment_type',
+                    'projects.project_owner_id',
+                    'projects.created_at',
+                    'projects.updated_at'
+                )
+                ->orderByDesc('projects.onboarded_time')
+                ->select(
+                    'projects.id',
+                    'projects.customer_id',
+                    'projects.name',
+                    'projects.requirements',
+                    'projects.status',
+                    'projects.onboarded_time',
+                    'projects.payment_status',
+                    'projects.payment_type',
+                    'projects.project_owner_id',
+                    'projects.created_at',
+                    'projects.updated_at'
+                )
+                ->get();
+        } else {
+            // For other roles, retrieve all projects.
+            $projects = Project::latest()->get();
+        }
+
+        $customers = \App\Models\Customer::all();
+        $departments = \App\Models\Department::all();
+        $employees = \App\Models\Employee::all();
+
+        return view('projects.index', compact('projects', 'customers', 'departments', 'employees'));
     }
-
-    $customers   = \App\Models\Customer::all();
-    $departments = \App\Models\Department::all();
-    $employees   = \App\Models\Employee::all();
-
-    return view('projects.index', compact('projects', 'customers', 'departments', 'employees'));
-}
 
 
 
@@ -97,29 +121,29 @@ public function index()
     //     $employees = \App\Models\Employee::all();
     //     $projectDescription = $project->projectDescription()->first();
     //     $services = \App\Models\Service::all();
-        
+
     //     return view('projects.show', compact('project', 'projectDescription','customers', 'departments', 'employees', 'services'));
     // }
 public function show(Project $project)
 {
     $project->load([
-        'customer', 
-        'owner', 
-        'milestones', 
-        'documents', 
-        'statusHistory', 
-        'projectServices', 
-        'projectDescriptions', 
+        'customer',
+        'owner',
+        'milestones',
+        'documents',
+        'statusHistory',
+        'projectServices',
+        'projectDescriptions',
         'customer.contacts',
         'tasks.service',
         'tasks.assignments.staff'
     ]);
-    
+
     $customers = \App\Models\Customer::all();
     $departments = \App\Models\Department::all();
     $employees = \App\Models\Employee::all();
     $services = \App\Models\Service::all();
-    
+
     $projectDescription = $project->projectDescriptions()->first();
 
     return view('projects.show', compact('project', 'projectDescription', 'customers', 'departments', 'employees', 'services'));
@@ -218,7 +242,7 @@ public function departmentProjects(Request $request)
 
     // --- Additional functions for managing milestones, documents, and status history ---
     // You might create separate controllers for these, but here are example functions integrated into the ProjectController.
-    
+
     /**
      * Add a new milestone to the project.
      */
