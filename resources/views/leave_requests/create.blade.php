@@ -9,10 +9,12 @@
             <label for="leave_type">Leave Type</label>
             <select class="form-control" name="leave_type" id="leave_type" required>
                 <option value="">Select Leave Type</option>
-                <option value="Annual">Annual Leave</option>
+                <option value="Unpaid">Unpaid Leave</option>
+                <option value="Paid">Paid Leave</option>
+                <option value="half_day_first">Half day Leave(first half)</option>
+                <option value="half_day_second">Half day Leave(second half)</option>
                 <option value="Sick">Sick Leave</option>
                 <option value="Maternity">Maternity Leave</option>
-                <option value="Unpaid">Unpaid Leave</option>
             </select>
         </div>
         <div class="form-group">

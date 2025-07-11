@@ -58,17 +58,16 @@
                                 <option value="Submitted" {{ request('status') == 'Submitted' ? 'selected' : '' }}>Submitted</option>
                                 <option value="Approved" {{ request('status') == 'Approved' ? 'selected' : '' }}>Approved</option>
                                 <option value="Rejected" {{ request('status') == 'Rejected' ? 'selected' : '' }}>Rejected</option>
-                                <option value="Canceled" {{ request('status') == 'Canceled' ? 'selected' : '' }}>Canceled</option>
                             </select>
                         </div>
-                        @if(in_array(auth()->user()->role_id, [3, 7]))
+                        @if(in_array(auth()->user()->role_id, [1, 2, 3, 7]))
                         <div class="col-md-2">
                             <label for="employee_id" class="form-label">Employee</label>
                             <select name="employee_id" id="employee_id" class="form-control">
                                 <option value="">All</option>
                                 @foreach($employees as $employee)
                                     <option value="{{ $employee->id }}" {{ request('employee_id') == $employee->id ? 'selected' : '' }}>
-                                        {{ $employee->name }}
+                                        {{ optional($employee->employee)->first_name . ' ' . optional($employee->employee)->last_name }}
                                     </option>
                                 @endforeach
                             </select>
@@ -94,7 +93,8 @@
                                         <th>Start Date</th>
                                         <th>End Date</th>
                                         <th>Duration</th>
-                                        <th>Status</th>
+                                        <th>Team Lead Status</th>
+                                        <th>HR Status</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -108,13 +108,21 @@
                                             <td>{{ $leaveRequest->end_date->format('Y-m-d') }}</td>
                                             <td>{{ $leaveRequest->duration }} days</td>
                                             <td>
-                                                <span class="badge bg-{{ $leaveRequest->status == 'Approved' ? 'success' : ($leaveRequest->status == 'Rejected' ? 'danger' : ($leaveRequest->status == 'Submitted' ? 'warning' : 'secondary')) }} text-white">
-                                                    {{ $leaveRequest->status ?? 'Unknown' }}
+                                                <span class="badge bg-{{ $leaveRequest->team_lead_status == 'Approved' ? 'success' : ($leaveRequest->team_lead_status == 'Rejected' ? 'danger' : ($leaveRequest->team_lead_status == 'Submitted' ? 'warning' : 'secondary')) }} text-white">
+                                                    {{ $leaveRequest->team_lead_status ?? 'Submitted' }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <span class="badge bg-{{ $leaveRequest->hr_status == 'Approved' ? 'success' : ($leaveRequest->hr_status == 'Rejected' ? 'danger' : ($leaveRequest->hr_status == 'Submitted' ? 'warning' : 'secondary')) }} text-white">
+                                                    {{ $leaveRequest->hr_status ?? 'Submitted' }}
                                                 </span>
                                             </td>
                                             <td>
                                                 <a href="#" class="btn btn-sm btn-info viewLeaveBtn" data-id="{{ $leaveRequest->id }}" data-bs-toggle="modal" data-bs-target="#viewLeaveRequestModal">View</a>
-                                                @if(in_array(auth()->user()->role_id, [3, 7]) && $leaveRequest->status == 'Submitted')
+                                                @if(auth()->user()->role_id == 3 && $leaveRequest->team_lead_status == 'Submitted')
+                                                    <a href="#" class="btn btn-sm btn-success approveLeaveBtn" data-id="{{ $leaveRequest->id }}" data-bs-toggle="modal" data-bs-target="#approveLeaveModal">Approve</a>
+                                                    <a href="#" class="btn btn-sm btn-danger rejectLeaveBtn" data-id="{{ $leaveRequest->id }}" data-bs-toggle="modal" data-bs-target="#rejectLeaveModal">Reject</a>
+                                                @elseif(auth()->user()->role_id == 7 && $leaveRequest->hr_status == 'Submitted' && $leaveRequest->team_lead_status == 'Approved')
                                                     <a href="#" class="btn btn-sm btn-success approveLeaveBtn" data-id="{{ $leaveRequest->id }}" data-bs-toggle="modal" data-bs-target="#approveLeaveModal">Approve</a>
                                                     <a href="#" class="btn btn-sm btn-danger rejectLeaveBtn" data-id="{{ $leaveRequest->id }}" data-bs-toggle="modal" data-bs-target="#rejectLeaveModal">Reject</a>
                                                 @endif
@@ -193,25 +201,80 @@
 <div class="modal fade" id="viewLeaveRequestModal" tabindex="-1" aria-labelledby="viewLeaveRequestModalLabel" inert>
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="viewLeaveRequestModalLabel">Leave Request Details</h5>
+            <div class="modal-header bg-gray-100 border-b">
+                <h5 class="modal-title text-lg font-semibold text-gray-800" id="viewLeaveRequestModalLabel">Leave Request Details</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <div id="leaveRequestDetails">
-                    <p><strong>Employee:</strong> <span id="detailEmployee"></span></p>
-                    <p><strong>Leave Type:</strong> <span id="detailLeaveType"></span></p>
-                    <p><strong>Start Date:</strong> <span id="detailStartDate"></span></p>
-                    <p><strong>End Date:</strong> <span id="detailEndDate"></span></p>
-                    <p><strong>Duration:</strong> <span id="detailDuration"></span></p>
-                    <p><strong>Reason:</strong> <span id="detailReason"></span></p>
-                    <p><strong>Status:</strong> <span id="detailStatus"></span></p>
-                    <p><strong>Approver:</strong> <span id="detailApprover"></span></p>
-                    <p><strong>Approved/Rejected At:</strong> <span id="detailApprovedAt"></span></p>
-                    <p><strong>Approver Comments:</strong> <span id="detailApproverComments"></span></p>
+            <div class="modal-body p-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Employee Information -->
+                    <div class="space-y-4 mb-4">
+                        <h6 class="text-base font-medium text-gray-700 border-b pb-2">Employee Information</h6>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">Employee:</span>
+                            <span id="detailEmployee" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">Leave Type:</span>
+                            <span id="detailLeaveType" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">Start Date:</span>
+                            <span id="detailStartDate" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">End Date:</span>
+                            <span id="detailEndDate" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">Duration:</span>
+                            <span id="detailDuration" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-start">
+                            <span class="font-medium text-gray-600 w-1/3">Reason:</span>
+                            <span id="detailReason" class="text-gray-800"></span>
+                        </div>
+                    </div>
+                    <!-- Approval Information -->
+                    <div class="space-y-4">
+                        <h6 class="text-base font-medium text-gray-700 border-b pb-2">Approval Information</h6>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">Team Lead Status:</span>
+                            <span id="detailTeamLeadStatus" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">HR Status:</span>
+                            <span id="detailHrStatus" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">Team Lead Approver:</span>
+                            <span id="detailTeamLeadApprover" class="text-gray-800"></span>
+                        </div>
+
+                        <div class="flex items-start">
+                            <span class="font-medium text-gray-600 w-1/3">Team Lead Comments:</span>
+                            <span id="detailTeamLeadComments" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">HR Approver:</span>
+                            <span id="detailHrApprover" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-start">
+                            <span class="font-medium text-gray-600 w-1/3">HR Comments:</span>
+                            <span id="detailHrComments" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">Team Lead Approved At:</span>
+                            <span id="detailTeamLeadApprovedAt" class="text-gray-800"></span>
+                        </div>
+                        <div class="flex items-center">
+                            <span class="font-medium text-gray-600 w-1/3">HR Approved At:</span>
+                            <span id="detailHrApprovedAt" class="text-gray-800"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer bg-gray-100 border-t">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
             </div>
         </div>
@@ -304,10 +367,14 @@ $(document).ready(function() {
                     $('#detailEndDate').text(response.data.end_date || 'N/A');
                     $('#detailDuration').text(response.data.duration ? response.data.duration + ' days' : 'N/A');
                     $('#detailReason').text(response.data.reason || 'N/A');
-                    $('#detailStatus').text(response.data.status || 'N/A');
-                    $('#detailApprover').text(response.data.approver || 'N/A');
-                    $('#detailApprovedAt').text(response.data.approved_at || 'N/A');
-                    $('#detailApproverComments').text(response.data.approver_comments || 'N/A');
+                    $('#detailTeamLeadStatus').text(response.data.team_lead_status || 'Submitted');
+                    $('#detailHrStatus').text(response.data.hr_status || 'Submitted');
+                    $('#detailTeamLeadApprover').text(response.data.team_lead_approver || 'N/A');
+                    $('#detailHrApprover').text(response.data.hr_approver || 'N/A');
+                    $('#detailTeamLeadApprovedAt').text(response.data.team_lead_approved_at || 'N/A');
+                    $('#detailHrApprovedAt').text(response.data.hr_approved_at || 'N/A');
+                    $('#detailTeamLeadComments').text(response.data.team_lead_comments || 'N/A');
+                    $('#detailHrComments').text(response.data.hr_comments || 'N/A');
                     $('#viewLeaveRequestModal').modal('show');
                 } else {
                     showPopup("Error: " + response.message);

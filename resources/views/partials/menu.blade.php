@@ -13,10 +13,10 @@
                                     <img src="{{ asset('images/logo-dark.png') }}" srcset="{{ asset('images/logo-dark2x.png 2x') }}" alt="logo-dark" class="logo-dark logo-img">
                                 </a>
                             </div><!-- .nk-header-brand -->
-                           
+
                             <div class="nk-header-tools">
                                 <ul class="nk-quick-nav">
-                                    
+
                                     <li class="dropdown user-dropdown">
                                         <a  class="dropdown-toggle" data-bs-toggle="dropdown">
                                             <div class="user-toggle">
@@ -153,7 +153,7 @@
                                             </div>
                                             <div class="dropdown-body">
                                                 <div class="nk-notification">
-                                                    
+
 
                                                     <div class="nk-notification-item dropdown-inner">
                                                         <div class="nk-notification-icon">
@@ -164,11 +164,11 @@
                                                             <div class="nk-notification-time">2 hrs ago</div>
                                                         </div>
                                                     </div>
-                                                    
-                                                    
-                                                    
-                                                    
-                                                    
+
+
+
+
+
                                                 </div><!-- .nk-notification -->
                                             </div><!-- .nk-dropdown-body -->
                                             <div class="dropdown-foot center">
@@ -182,4 +182,4 @@
                         </div><!-- .nk-header-wrap -->
                     </div><!-- .container-fliud -->
                 </div>
-                
+

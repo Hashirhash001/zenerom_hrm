@@ -79,9 +79,12 @@ class TaskController extends Controller
                     ->orderByDesc('created_at')
                     ->get();
 
-        $projects = \App\Models\Project::all();
-        $services = \App\Models\Service::all();
-        $staffs   = \App\Models\Employee::all();
+        $projects = \App\Models\Project::orderBy('name')->get();
+        $services = \App\Models\Service::orderBy('name')->get();
+        $staffs   = \App\Models\Employee::whereNull('resignation')
+                    ->where('status', 1)
+                    ->orderBy('first_name')
+                    ->get();
 
         return view('tasks.index', compact('tasks', 'projects', 'services', 'staffs'));
     }

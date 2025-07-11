@@ -127,6 +127,17 @@
             </select>
         </div>
     </div>
+    <!-- Work Timing -->
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label for="work_start_time" class="form-label">Work Start Time</label>
+            <input type="time" class="form-control" id="work_start_time" name="work_start_time" value="{{ $employee->work_start_time }}">
+        </div>
+        <div class="col-md-6 mb-3">
+            <label for="work_end_time" class="form-label">Work End Time</label>
+            <input type="time" class="form-control" id="work_end_time" name="work_end_time" value="{{ $employee->work_end_time }}">
+        </div>
+    </div>
     <!-- Hidden Status -->
     <input type="hidden" name="status" value="{{ $employee->status }}">
     </div>

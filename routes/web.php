@@ -61,7 +61,8 @@ Route::middleware(['check.session'])->group(function () {
     Route::get('/dashboard/projectmanager', [DashboardController::class, 'projectmanager'])->name('dashboard.projectmanager');
     Route::get('/dashboard/interns', [DashboardController::class, 'interns'])->name('dashboard.interns');
     Route::get('/dashboard/hr', [DashboardController::class, 'hr'])->name('dashboard.hr');
-    Route::get('/dashboard/nocontent', [DashboardController::class, 'nocontent'])->name('dashboard.nocontent');
+    Route::get('/dashboard/junior', [DashboardController::class, 'junior'])->name('dashboard.junior');
+    Route::get('/dashboard/trainee', [DashboardController::class, 'trainee'])->name('dashboard.trainee');
 
     // Departments routes
     Route::get('departments/search', [DepartmentController::class, 'search'])->name('department.search');

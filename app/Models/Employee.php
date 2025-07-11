@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Employee extends Model
 {
     protected $fillable = [
-        'employee_id', 
+        'employee_id',
         'first_name',
         'middle_name',
         'last_name',
@@ -29,7 +29,9 @@ class Employee extends Model
         'department_id',
         'resignation',
         'resignation_details',
-        'role_id'
+        'role_id',
+        'work_start_time',
+        'work_end_time',
     ];
    public function department()
     {

@@ -17,7 +17,7 @@
 
                         <div class="nk-block-head-content">
                             <div class="toggle-wrap nk-block-tools-toggle">
-                                <a href="#" class="btn btn-icon btn-trigger toggle-expand me-n1" data-target="pageMenu">
+                                <a href="javascript:void(0)" class="btn btn-icon btn-trigger toggle-expand me-n1" data-target="pageMenu">
                                     <em class="icon ni ni-menu-alt-r"></em>
                                 </a>
                                 <div class="toggle-expand-content" data-content="pageMenu">
@@ -28,12 +28,12 @@
                                             </div>
                                         </li>
                                         <li class="nk-block-tools-opt d-none d-sm-block">
-                                            <a href="#" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+                                            <a href="javascript:void(0)" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTaskModal">
                                                 <em class="icon ni ni-plus"></em><span>Add Task</span>
                                             </a>
                                         </li>
                                         <li class="nk-block-tools-opt d-block d-sm-none">
-                                            <a href="#" class="btn btn-icon btn-primary" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+                                            <a href="javascript:void(0)" class="btn btn-icon btn-primary" data-bs-toggle="modal" data-bs-target="#addTaskModal">
                                                 <em class="icon ni ni-plus"></em>
                                             </a>
                                         </li>
@@ -106,7 +106,7 @@
                                 @endforeach
                             </select>
                         </div>
-                        <div class="col-md-2 align-self-end">
+                        <div class="col-md-3 align-self-end">
                             <button type="submit" class="btn btn-primary">Apply Filters</button>
                             <a href="{{ route('tasks.index') }}" class="btn btn-secondary">Clear</a>
                         </div>

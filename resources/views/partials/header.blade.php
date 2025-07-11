@@ -49,7 +49,7 @@
                 {{-- Tasks (menu_item id: 2) --}}
                 @if(session()->has('user_privileges') && session('user_privileges')->has(2) && session('user_privileges')->get(2)->can_view)
                 <li class="nk-menu-item has-sub">
-                    <a href="#" class="nk-menu-link nk-menu-toggle">
+                    <a href="javascript:void(0)" class="nk-menu-link nk-menu-toggle">
                         <span class="nk-menu-icon"><em class="icon ni ni-list-check"></em></span>
                         <span class="nk-menu-text">Tasks</span>
                     </a>
@@ -77,7 +77,7 @@
                 {{-- Projects (menu_item id: 3) --}}
                 @if(session()->has('user_privileges') && session('user_privileges')->has(3) && session('user_privileges')->get(3)->can_view)
                 <li class="nk-menu-item has-sub">
-                    <a href="#" class="nk-menu-link nk-menu-toggle">
+                    <a href="javascript:void(0)" class="nk-menu-link nk-menu-toggle">
                         <span class="nk-menu-icon"><em class="icon ni ni-laptop"></em></span>
                         <span class="nk-menu-text">Projects</span>
                     </a>
@@ -113,7 +113,7 @@
                 {{-- Staffs (menu_item id: 4) --}}
                 @if(session()->has('user_privileges') && session('user_privileges')->has(4) && session('user_privileges')->get(4)->can_view)
                 <li class="nk-menu-item has-sub">
-                    <a href="#" class="nk-menu-link nk-menu-toggle">
+                    <a href="javascript:void(0)" class="nk-menu-link nk-menu-toggle">
                         <span class="nk-menu-icon"><em class="icon ni ni-user-list"></em></span>
                         <span class="nk-menu-text">Staffs</span>
                     </a>
@@ -129,7 +129,7 @@
                         {{-- Profile (menu_item id: 15) --}}
                         @if(session('user_privileges')->has(15) && session('user_privileges')->get(15)->can_view)
                         <li class="nk-menu-item">
-                            <a href="#" class="nk-menu-link">
+                            <a href="javascript:void(0)" class="nk-menu-link">
                                 <span class="nk-menu-text">Profile</span>
                             </a>
                         </li>
@@ -145,7 +145,7 @@
                         {{-- Salary (menu_item id: 17) --}}
                         @if(session('user_privileges')->has(17) && session('user_privileges')->get(17)->can_view)
                         <li class="nk-menu-item">
-                            <a href="#" class="nk-menu-link">
+                            <a href="javascript:void(0)" class="nk-menu-link">
                                 <span class="nk-menu-text">Salary</span>
                             </a>
                         </li>
@@ -153,7 +153,7 @@
                         {{-- Performance (menu_item id: 18) --}}
                         @if(session('user_privileges')->has(18) && session('user_privileges')->get(18)->can_view)
                         <li class="nk-menu-item">
-                            <a href="#" class="nk-menu-link">
+                            <a href="javascript:void(0)" class="nk-menu-link">
                                 <span class="nk-menu-text">Performance</span>
                             </a>
                         </li>
@@ -165,7 +165,7 @@
                 {{-- Calendar (menu_item id: 5) --}}
                 @if(session()->has('user_privileges') && session('user_privileges')->has(5) && session('user_privileges')->get(5)->can_view)
                 <li class="nk-menu-item">
-                    <a href="#" class="nk-menu-link">
+                    <a href="javascript:void(0)" class="nk-menu-link">
                         <span class="nk-menu-icon"><em class="icon ni ni-calendar-booking"></em></span>
                         <span class="nk-menu-text">Calendar</span>
                     </a>
@@ -175,7 +175,7 @@
                 {{-- Accounts (menu_item id: 6) --}}
                 @if(session()->has('user_privileges') && session('user_privileges')->has(6) && session('user_privileges')->get(6)->can_view)
                 <li class="nk-menu-item has-sub">
-                    <a href="#" class="nk-menu-link nk-menu-toggle">
+                    <a href="javascript:void(0)" class="nk-menu-link nk-menu-toggle">
                         <span class="nk-menu-icon"><em class="icon ni ni-coins"></em></span>
                         <span class="nk-menu-text">Accounts</span>
                     </a>
@@ -183,7 +183,7 @@
                         {{-- Income (menu_item id: 19) --}}
                         @if(session('user_privileges')->has(19) && session('user_privileges')->get(19)->can_view)
                         <li class="nk-menu-item">
-                            <a href="#" class="nk-menu-link">
+                            <a href="javascript:void(0)" class="nk-menu-link">
                                 <span class="nk-menu-text">Income</span>
                             </a>
                         </li>
@@ -191,7 +191,7 @@
                         {{-- Expense (menu_item id: 20) --}}
                         @if(session('user_privileges')->has(20) && session('user_privileges')->get(20)->can_view)
                         <li class="nk-menu-item">
-                            <a href="#" class="nk-menu-link">
+                            <a href="javascript:void(0)" class="nk-menu-link">
                                 <span class="nk-menu-text">Expense</span>
                             </a>
                         </li>
@@ -199,7 +199,7 @@
                         {{-- Invoice (menu_item id: 21) --}}
                         @if(session('user_privileges')->has(21) && session('user_privileges')->get(21)->can_view)
                         <li class="nk-menu-item">
-                            <a href="#" class="nk-menu-link">
+                            <a href="javascript:void(0)" class="nk-menu-link">
                                 <span class="nk-menu-text">Invoice</span>
                             </a>
                         </li>
@@ -211,7 +211,7 @@
                 {{-- Settings (menu_item id: 7) --}}
                 @if(session()->has('user_privileges') && session('user_privileges')->has(7) && session('user_privileges')->get(7)->can_view)
                 <li class="nk-menu-item has-sub">
-                    <a href="#" class="nk-menu-link nk-menu-toggle">
+                    <a href="javascript:void(0)" class="nk-menu-link nk-menu-toggle">
                         <span class="nk-menu-icon"><em class="icon ni ni-setting-alt"></em></span>
                         <span class="nk-menu-text">Settings</span>
                     </a>

@@ -22,9 +22,12 @@ class MyTaskController extends Controller
     public function index(Request $request)
     {
         $userId = Auth::id();
-        $projects = Project::all();
-        $services = Service::all();
-        $staffs = Employee::all();
+        $projects = \App\Models\Project::orderBy('name')->get();
+        $services = \App\Models\Service::orderBy('name')->get();
+        $staffs   = \App\Models\Employee::whereNull('resignation')
+                    ->where('status', 1)
+                    ->orderBy('first_name')
+                    ->get();
 
         if ($request->ajax()) {
             // For AJAX, return all tasks (for loadAllTasks)

@@ -13,7 +13,7 @@
                         </div>
                         <div class="nk-block-head-content">
                             <div class="toggle-wrap nk-block-tools-toggle">
-                                <a href="#" class="btn btn-icon btn-trigger toggle-expand me-n1" data-target="pageMenu">
+                                <a href="javascript:void(0)" class="btn btn-icon btn-trigger toggle-expand me-n1" data-target="pageMenu">
                                     <em class="icon ni ni-menu-alt-r"></em>
                                 </a>
                                 <div class="toggle-expand-content" data-content="pageMenu">

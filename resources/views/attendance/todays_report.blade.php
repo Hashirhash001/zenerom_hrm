@@ -4,21 +4,21 @@
 <div class="nk-content">
   <div class="container">
     <h4>
-      Report from {{ request('start_date', \Carbon\Carbon::today()->format('d M Y')) }} 
-      to {{ request('end_date', \Carbon\Carbon::today()->format('d M Y')) }}
+      Report from {{ \Carbon\Carbon::parse(request('start_date', \Carbon\Carbon::today()))->format('d M Y') }}
+      to {{ \Carbon\Carbon::parse(request('end_date', \Carbon\Carbon::today()))->format('d M Y') }}
     </h4>
     <!-- Filter Form -->
     <form method="GET" action="{{ route('attendance.todays_report') }}" class="row g-3 mb-4">
       <div class="col-md-3">
         <label for="start_date" class="form-label">Start Date</label>
-        <input type="date" name="start_date" id="start_date" 
-               value="{{ request('start_date', \Carbon\Carbon::today()->toDateString()) }}" 
+        <input type="date" name="start_date" id="start_date"
+               value="{{ request('start_date', \Carbon\Carbon::today()->toDateString()) }}"
                class="form-control">
       </div>
       <div class="col-md-3">
         <label for="end_date" class="form-label">End Date</label>
-        <input type="date" name="end_date" id="end_date" 
-               value="{{ request('end_date', \Carbon\Carbon::today()->toDateString()) }}" 
+        <input type="date" name="end_date" id="end_date"
+               value="{{ request('end_date', \Carbon\Carbon::today()->toDateString()) }}"
                class="form-control">
       </div>
       <div class="col-md-3">
@@ -37,7 +37,7 @@
         <a href="{{ route('attendance.todays_report') }}" class="btn btn-secondary">Clear</a>
       </div>
     </form>
-    
+
     <!-- Attendance Report Table -->
     <div class="table-responsive">
       <table class="datatable-init-export table" data-export-title="Attendance Report">
@@ -71,40 +71,21 @@
                 </td>
                 <td>
                   @if(isset($attendances[$employee->id]))
-                    {{ \Carbon\Carbon::parse($attendances[$employee->id]->created_at)->format('d M Y H:i') }}
+                    {{ $attendances[$employee->id]->formatted_login_time }}
                   @else
                     -
                   @endif
                 </td>
                 <td>
                   @if(isset($attendances[$employee->id]))
-                    @if($attendances[$employee->id]->logout)
-                      {{ \Carbon\Carbon::parse($attendances[$employee->id]->logout)->format('d M Y H:i') }}
-                    @else
-                      Still Working
-                    @endif
+                    {{ $attendances[$employee->id]->formatted_logout_time }}
                   @else
                     -
                   @endif
                 </td>
                 <td>
                   @if(isset($attendances[$employee->id]))
-                    @php
-                      $loginTime = \Carbon\Carbon::parse($attendances[$employee->id]->created_at);
-                      if($attendances[$employee->id]->logout) {
-                        $logoutTime = \Carbon\Carbon::parse($attendances[$employee->id]->logout);
-                      } else {
-                        $logoutTime = \Carbon\Carbon::now();
-                      }
-                      $totalMinutes = $logoutTime->diffInMinutes($loginTime);
-                      $hours = floor($totalMinutes / 60);
-                      $minutes = $totalMinutes % 60;
-                      $workHours = sprintf('%02d:%02d', $hours, $minutes);
-                      if(!$attendances[$employee->id]->logout){
-                        $workHours .= ' (Still Working)';
-                      }
-                    @endphp
-                    {{ $workHours }}
+                    {{ $attendances[$employee->id]->formatted_work_hours }}
                   @else
                     -
                   @endif
@@ -130,7 +111,7 @@
         </tbody>
       </table>
     </div>
+  </div>
 </div>
 <script src="{{ asset('assets1/jquery.min.js') }}"></script>
-
 @endsection

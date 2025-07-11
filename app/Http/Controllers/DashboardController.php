@@ -294,6 +294,30 @@ class DashboardController extends Controller
         }
     }
 
+    public function junior(Request $request)
+    {
+        if (session('rid') != 12) {
+            return redirect()->route('login');
+        } else {
+            return view('dashboard.juniors', [
+                'uid'   => session('uid'),
+                'uname' => session('uname')
+            ]);
+        }
+    }
+
+    public function trainee(Request $request)
+    {
+        if (session('rid') != 13) {
+            return redirect()->route('login');
+        } else {
+            return view('dashboard.trainee', [
+                'uid'   => session('uid'),
+                'uname' => session('uname')
+            ]);
+        }
+    }
+
     // HR Dashboard (role 7)
     public function hr(Request $request)
     {

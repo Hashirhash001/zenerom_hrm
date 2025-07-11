@@ -68,22 +68,6 @@ class LoginController extends Controller
                         ->keyBy('menu_item_id');
             session()->put('user_privileges', $privileges);
 
-            //$mode="Work from home";
-            // $attendanceExists = DB::table('staff_attendance')
-            // ->where('user_id', $user->id)
-            // ->whereDate('attendance_date', now()->toDateString())
-            // ->exists();
-
-            // // Insert an attendance record only if one doesn't exist for today.
-            // if (!$attendanceExists) {
-            //     DB::table('staff_attendance')->insert([
-            //         'user_id'         => $user->id,
-            //         'attendance_date' => now()->toDateString(),
-            //         'created_at' => now('Asia/Kolkata')->toDateTimeString(),
-            //         'mode'            => $mode,
-            //         'system_ip'       => $ipAddress,
-            //     ]);
-            // }
             // Redirect based on the user's role.
             if ($user->role_id == 1) {
                 return redirect()->route('dashboard.index');
@@ -99,6 +83,10 @@ class LoginController extends Controller
                 return redirect()->route('dashboard.interns');
             } else if ($user->role_id == 7) {
                 return redirect()->route('dashboard.hr');
+            } else if ($user->role_id == 12) {
+                return redirect()->route('dashboard.junior');
+            } else if ($user->role_id == 13) {
+                return redirect()->route('dashboard.trainee');
             }
         }
 

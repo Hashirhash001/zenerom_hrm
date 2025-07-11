@@ -195,6 +195,17 @@
               </select>
             </div>
           </div>
+          <!-- Work Timing -->
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="work_start_time" class="form-label">Work Start Time</label>
+                    <input type="time" class="form-control" id="work_start_time" name="work_start_time">
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="work_end_time" class="form-label">Work End Time</label>
+                    <input type="time" class="form-control" id="work_end_time" name="work_end_time">
+                </div>
+            </div>
           <!-- Hidden Status -->
           <input type="hidden" name="status" value="1">
         </div>
@@ -379,13 +390,13 @@ $(document).on('click', '#saveAccessControlBtn', function(e) {
     // Retrieve the employee's id from the hidden input
     var employeeId = $('#employee_id1234').val();
     console.log("Employee ID: " + employeeId); // Debug output
-    
+
     // Ensure employeeId is not empty
     if(!employeeId) {
         showPopup("Employee ID is missing.");
         return;
     }
-    
+
     $.ajax({
         url: "{{ url('employees') }}/" + employeeId + "/access",
         type: "POST",

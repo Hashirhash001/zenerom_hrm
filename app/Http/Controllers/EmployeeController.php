@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Role;
+use App\Models\User;
 use App\Models\Employee;
 use App\Models\Department;
-use App\Models\Role;
-use Illuminate\Support\Facades\Auth;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 class EmployeeController extends Controller
 {
@@ -58,20 +60,21 @@ class EmployeeController extends Controller
             'status'             => 'required|integer',
             'department_id'      => 'nullable|integer',
             'role_id'            => 'nullable|integer',
+            'work_start_time'    => 'nullable|date_format:H:i,H:i:s',
+            'work_end_time'      => 'nullable|date_format:H:i,H:i:s',
         ]);
 
-        // Handle file uploads if provided.
         if ($request->hasFile('image')) {
             $file = $request->file('image');
             $filename = 'empimg' . time() . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/employees'), $filename);
+            $file->move(public_path('Uploads/employees'), $filename);
             $validated['image'] = $filename;
         }
 
         if ($request->hasFile('cv_file')) {
             $file = $request->file('cv_file');
             $filename = 'empcv' . time() . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/employees'), $filename);
+            $file->move(public_path('Uploads/employees'), $filename);
             $validated['cv_file'] = $filename;
         }
 
@@ -83,6 +86,7 @@ class EmployeeController extends Controller
             'employee'  => $employee,
         ]);
     }
+
     public function departmentEmployees(Request $request)
     {
         $techhead = Auth::user();
@@ -150,23 +154,61 @@ class EmployeeController extends Controller
             'status'             => 'required|integer',
             'department_id'      => 'nullable|integer',
             'role_id'            => 'nullable|integer',
+            'work_start_time'    => 'nullable|date_format:H:i,H:i:s',
+            'work_end_time'      => 'nullable|date_format:H:i,H:i:s',
         ]);
 
         if ($request->hasFile('image')) {
             $file = $request->file('image');
             $filename = 'empimg' . time() . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/employees'), $filename);
+            $file->move(public_path('Uploads/employees'), $filename);
             $validated['image'] = $filename;
         }
 
         if ($request->hasFile('cv_file')) {
             $file = $request->file('cv_file');
             $filename = 'empcv' . time() . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('uploads/employees'), $filename);
+            $file->move(public_path('Uploads/employees'), $filename);
             $validated['cv_file'] = $filename;
         }
 
         $employee->update($validated);
+
+        // Update role_id in the users table if provided
+        if (isset($validated['role_id'])) {
+            // Assuming employees table has a user_id linking to users.id
+            if ($employee->user_id) {
+                $user = User::find($employee->user_id);
+                if ($user) {
+                    $user->update(['role_id' => $validated['role_id']]);
+                    Log::info('Updated role_id in users table', [
+                        'user_id' => $employee->user_id,
+                        'role_id' => $validated['role_id'],
+                        'employee_id' => $employee->employee_id
+                    ]);
+                } else {
+                    Log::warning('No user found for employee', [
+                        'employee_id' => $employee->employee_id,
+                        'user_id' => $employee->user_id
+                    ]);
+                }
+            } else {
+                // Alternative: Find user by matching employee_id in users table
+                $user = User::where('employee_id', $employee->employee_id)->first();
+                if ($user) {
+                    $user->update(['role_id' => $validated['role_id']]);
+                    Log::info('Updated role_id in users table', [
+                        'user_id' => $user->id,
+                        'role_id' => $validated['role_id'],
+                        'employee_id' => $employee->employee_id
+                    ]);
+                } else {
+                    Log::warning('No user found for employee', [
+                        'employee_id' => $employee->employee_id
+                    ]);
+                }
+            }
+        }
 
         return response()->json([
             'success'   => true,
@@ -314,7 +356,7 @@ class EmployeeController extends Controller
     /**
      * Save access control privileges for the employee's user account.
      */
-   
+
     public function saveAccessControl(Request $request, Employee $employee)
     {
         // Validate the request.
@@ -325,13 +367,13 @@ class EmployeeController extends Controller
         // Ensure the employee has an associated user account.
         if (!$employee->user) {
             return response()->json([
-                'success' => false, 
+                'success' => false,
                 'message' => 'Employee does not have an associated user account.'
             ], 422);
         }
-        
+
         $userId = $employee->user->id;
-        
+
         // Remove all existing access privilege records for this user.
         \App\Models\UserAccessPrivilege::where('user_id', $userId)->delete();
 

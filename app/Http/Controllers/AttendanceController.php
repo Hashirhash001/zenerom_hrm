@@ -4,12 +4,15 @@ namespace App\Http\Controllers;
 
 use Carbon\Carbon;
 
+use App\Models\Employee;
+
+use App\Models\TaskAssigned;
+
 use Illuminate\Http\Request;
-
-use Illuminate\Support\Facades\DB;
-
-use Illuminate\Support\Facades\Auth;
 use App\Models\StaffAttendance;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 
 class AttendanceController extends Controller
 {
@@ -21,10 +24,21 @@ class AttendanceController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+        $today = Carbon::today('Asia/Kolkata');
 
-        $start_date = $request->get('start_date', Carbon::today('Asia/Kolkata')->toDateString());
-        $end_date = $request->get('end_date', Carbon::today('Asia/Kolkata')->toDateString());
-        $nameFilter = $request->get('name'); // Retrieve the 'name' query parameter
+        // Set default date range based on role
+        if (in_array($user->role_id, [4, 6]) || !in_array($user->role_id, [1, 2, 3, 7, 9])) {
+            $start_date = $request->get('start_date', $today->copy()->subDays(6)->toDateString());
+            $end_date = $request->get('end_date', $today->toDateString());
+        } else {
+            $start_date = $request->get('start_date', $today->toDateString());
+            $end_date = $request->get('end_date', $today->toDateString());
+        }
+
+        $nameFilter = $request->get('name');
+        $roleFilter = $request->get('role');
+        $departmentFilter = $request->get('department');
+        $statusFilter = $request->get('status');
 
         $query = DB::table('staff_attendance')
             ->join('employees', 'staff_attendance.user_id', '=', 'employees.id')
@@ -39,76 +53,180 @@ class AttendanceController extends Controller
 
         $query->whereBetween('attendance_date', [$start_date, $end_date]);
 
-        // Apply name filter if provided
         if ($nameFilter) {
             $query->where(function ($q) use ($nameFilter) {
                 $q->where('employees.first_name', 'LIKE', "%{$nameFilter}%")
-                ->orWhere('employees.middle_name', 'LIKE', "%{$nameFilter}%")
-                ->orWhere('employees.last_name', 'LIKE', "%{$nameFilter}%")
-                ->orWhere('employees.employee_id', 'LIKE', "%{$nameFilter}%");
+                    ->orWhere('employees.middle_name', 'LIKE', "%{$nameFilter}%")
+                    ->orWhere('employees.last_name', 'LIKE', "%{$nameFilter}%")
+                    ->orWhere('employees.employee_id', 'LIKE', "%{$nameFilter}%");
             });
         }
 
+        if ($roleFilter) {
+            $query->where('employees.role_id', $roleFilter);
+        }
+
+        if ($departmentFilter) {
+            $query->where('employees.department_id', $departmentFilter);
+        }
+
+        if ($statusFilter) {
+            if ($statusFilter === 'still_working') {
+                $query->whereNull('staff_attendance.logout')
+                      ->whereNotExists(function ($q) {
+                          $q->select(DB::raw(1))
+                            ->from('staff_breaks')
+                            ->whereRaw('staff_breaks.attendance_id = staff_attendance.id')
+                            ->whereNotNull('break_start')
+                            ->whereNull('break_end');
+                      });
+            } elseif ($statusFilter === 'on_break') {
+                $query->whereExists(function ($q) {
+                    $q->select(DB::raw(1))
+                      ->from('staff_breaks')
+                      ->whereRaw('staff_breaks.attendance_id = staff_attendance.id')
+                      ->whereNotNull('break_start')
+                      ->whereNull('break_end');
+                });
+            } elseif ($statusFilter === 'logged_out') {
+                $query->whereNotNull('staff_attendance.logout');
+            }
+        }
+
         if (in_array($user->role_id, [1, 2, 7, 9])) {
-            // No additional filtering
+            // Admins see all records
         } elseif ($user->role_id == 3) {
             $departmentId = optional($user->employee)->department_id;
             if ($departmentId) {
                 $query->where('employees.department_id', $departmentId);
             }
-        } elseif (in_array($user->role_id, [4, 6])) {
-            $query->where('staff_attendance.user_id', $user->id);
-        } else {
-            $query->where('staff_attendance.user_id', $user->id);
-        }
-
-        $attendances = $query->orderBy('attendance_date', 'desc')->get();
-
-        if (in_array($user->role_id, [2, 7])) {
-            return view('attendance.index', compact('attendances', 'start_date', 'end_date', 'nameFilter'));
-        }
-
-        return view('attendance.staffindex', compact('attendances', 'start_date', 'end_date', 'nameFilter'));
-    }
-
-    public function fetchAttendances(Request $request)
-    {
-        $user = Auth::user();
-
-        $start_date = $request->get('start_date', Carbon::today('Asia/Kolkata')->toDateString());
-        $end_date = $request->get('end_date', Carbon::today('Asia/Kolkata')->toDateString());
-
-        $query = DB::table('staff_attendance')
-            ->join('employees', 'staff_attendance.user_id', '=', 'employees.id')
-            ->leftJoin('departments', 'employees.department_id', '=', 'departments.id')
-            ->leftJoin('roles', 'employees.role_id', '=', 'roles.id')
-            ->select(
-                'staff_attendance.*',
-                DB::raw("CONCAT(CONCAT_WS(' ', employees.first_name, employees.middle_name, employees.last_name), ' (', employees.employee_id, ')') as employee_name"),
-                'departments.name as department',
-                'roles.name as role'
-            );
-
-        $query->whereBetween('attendance_date', [$start_date, $end_date]);
-
-        if (in_array($user->role_id, [1, 2, 7, 9])) {
-            // No additional filtering
-        } elseif ($user->role_id == 3) {
-            $departmentId = optional($user->employee)->department_id;
-            if ($departmentId) {
-                $query->where('employees.department_id', $departmentId);
-            }
-        } elseif (in_array($user->role_id, [4, 6])) {
-            $query->where('staff_attendance.user_id', $user->id);
         } else {
             $query->where('staff_attendance.user_id', $user->id);
         }
 
         $attendances = $query->orderBy('attendance_date', 'desc')->get()->map(function ($attendance) {
-            $attendance->breaks = DB::table('staff_breaks')
+            $attendance->is_on_break = $this->isOnBreak($attendance->id);
+            $attendance->total_break_seconds = (int) DB::table('staff_breaks')
                 ->where('attendance_id', $attendance->id)
-                ->select('break_start', 'break_end')
-                ->get();
+                ->whereNotNull('break_end')
+                ->sum(DB::raw('TIMESTAMPDIFF(SECOND, break_start, break_end)'));
+            return $attendance;
+        });
+
+        $roles = DB::table('roles')->select('id', 'name')->get();
+        $departments = DB::table('departments')->select('id', 'name')->get();
+
+        if (in_array($user->role_id, [1, 2, 7])) {
+            return view('attendance.index', compact('attendances', 'start_date', 'end_date', 'nameFilter', 'roleFilter', 'departmentFilter', 'statusFilter', 'roles', 'departments'));
+        }
+
+        return view('attendance.staffindex', compact('attendances', 'start_date', 'end_date', 'nameFilter', 'roleFilter', 'departmentFilter', 'statusFilter', 'roles', 'departments'));
+    }
+
+    public function fetchAttendances(Request $request)
+    {
+        $user = Auth::user();
+        $today = Carbon::today('Asia/Kolkata');
+        $now = Carbon::now('Asia/Kolkata');
+
+        // Set default date range based on role
+        if (in_array($user->role_id, [4, 6]) || !in_array($user->role_id, [1, 2, 3, 7, 9])) {
+            $start_date = $request->get('start_date', $today->copy()->subDays(6)->toDateString());
+            $end_date = $request->get('end_date', $today->toDateString());
+        } else {
+            $start_date = $request->get('start_date', $today->toDateString());
+            $end_date = $request->get('end_date', $today->toDateString());
+        }
+
+        $nameFilter = $request->get('name');
+        $roleFilter = $request->get('role');
+        $departmentFilter = $request->get('department');
+        $statusFilter = $request->get('status');
+
+        $query = DB::table('staff_attendance')
+            ->join('employees', 'staff_attendance.user_id', '=', 'employees.id')
+            ->leftJoin('departments', 'employees.department_id', '=', 'departments.id')
+            ->leftJoin('roles', 'employees.role_id', '=', 'roles.id')
+            ->select(
+                'staff_attendance.*',
+                DB::raw("CONCAT(CONCAT_WS(' ', employees.first_name, employees.middle_name, employees.last_name), ' (', employees.employee_id, ')') as employee_name"),
+                'departments.name as department',
+                'roles.name as role'
+            );
+
+        $query->whereBetween('attendance_date', [$start_date, $end_date]);
+
+        if ($nameFilter) {
+            $query->where(function ($q) use ($nameFilter) {
+                $q->where('employees.first_name', 'LIKE', "%{$nameFilter}%")
+                    ->orWhere('employees.middle_name', 'LIKE', "%{$nameFilter}%")
+                    ->orWhere('employees.last_name', 'LIKE', "%{$nameFilter}%")
+                    ->orWhere('employees.employee_id', 'LIKE', "%{$nameFilter}%");
+            });
+        }
+
+        if ($roleFilter) {
+            $query->where('employees.role_id', $roleFilter);
+        }
+
+        if ($departmentFilter) {
+            $query->where('employees.department_id', $departmentFilter);
+        }
+
+        if ($statusFilter) {
+            if ($statusFilter === 'still_working') {
+                $query->whereNull('staff_attendance.logout')
+                      ->whereNotExists(function ($q) {
+                          $q->select(DB::raw(1))
+                            ->from('staff_breaks')
+                            ->whereRaw('staff_breaks.attendance_id = staff_attendance.id')
+                            ->whereNotNull('break_start')
+                            ->whereNull('break_end');
+                      });
+            } elseif ($statusFilter === 'on_break') {
+                $query->whereExists(function ($q) {
+                    $q->select(DB::raw(1))
+                      ->from('staff_breaks')
+                      ->whereRaw('staff_breaks.attendance_id = staff_attendance.id')
+                      ->whereNotNull('break_start')
+                      ->whereNull('break_end');
+                });
+            } elseif ($statusFilter === 'logged_out') {
+                $query->whereNotNull('staff_attendance.logout');
+            }
+        }
+
+        if (in_array($user->role_id, [1, 2, 7, 9])) {
+            // Admins see all records
+        } elseif ($user->role_id == 3) {
+            $departmentId = optional($user->employee)->department_id;
+            if ($departmentId) {
+                $query->where('employees.department_id', $departmentId);
+            }
+        } else {
+            $query->where('staff_attendance.user_id', $user->id);
+        }
+
+        $attendances = $query->get()->map(function ($attendance) use ($now) {
+            $attendance->is_on_break = $this->isOnBreak($attendance->id);
+            $attendance->total_break_seconds = (int) DB::table('staff_breaks')
+                ->where('attendance_id', $attendance->id)
+                ->whereNotNull('break_end')
+                ->sum(DB::raw('TIMESTAMPDIFF(SECOND, break_start, break_end)'));
+            // Calculate and update total_work_seconds for active sessions
+            if (!$attendance->logout && !$attendance->is_on_break) {
+                $start = Carbon::parse($attendance->created_at, 'Asia/Kolkata');
+                $sessionSeconds = $now->diffInSeconds($start);
+                $totalWorkSeconds = max(0, $sessionSeconds - $attendance->total_break_seconds);
+                // Update database
+                DB::table('staff_attendance')
+                    ->where('id', $attendance->id)
+                    ->update([
+                        'total_work_seconds' => $totalWorkSeconds,
+                        'last_timer_start' => $now
+                    ]);
+                $attendance->total_work_seconds = $totalWorkSeconds;
+            }
             return $attendance;
         });
 
@@ -159,6 +277,13 @@ class AttendanceController extends Controller
         $userId = Auth::id();
         $today = Carbon::today('Asia/Kolkata')->toDateString();
         $now = Carbon::now('Asia/Kolkata');
+        $forceCheckout = $request->input('force_checkout', false);
+
+        Log::info('CheckOut called', [
+            'user_id' => $userId,
+            'force_checkout' => $forceCheckout,
+            'now' => $now->toDateTimeString()
+        ]);
 
         // Check for incomplete tasks
         $assignments = DB::table('task_assigned')
@@ -174,7 +299,6 @@ class AttendanceController extends Controller
                 $documentCount = DB::table('task_documents')
                     ->where('task_assigned_id', $assignment->assignment_id)
                     ->count();
-
                 if ($documentCount < 1) {
                     $incompleteTasks[] = [
                         'task_id' => $assignment->task_id,
@@ -182,12 +306,12 @@ class AttendanceController extends Controller
                     ];
                 }
             }
-
             if (!empty($incompleteTasks)) {
+                Log::info('Incomplete tasks found', ['tasks' => $incompleteTasks]);
                 return response()->json([
                     'success' => false,
-                    'message' => 'You have incomplete tasks that need updates.',
-                    'incomplete_tasks' => $incompleteTasks
+                    'incomplete_tasks' => $incompleteTasks,
+                    'message' => 'You have incomplete tasks that need updates.'
                 ]);
             }
         }
@@ -199,6 +323,10 @@ class AttendanceController extends Controller
             ->first();
 
         if (!$attendance || $attendance->logout) {
+            Log::warning('Invalid attendance record', [
+                'attendance_exists' => !!$attendance,
+                'already_checked_out' => $attendance ? !!$attendance->logout : false
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => $attendance ? 'You have already checked out today.' : 'No check-in record found for today.'
@@ -206,61 +334,215 @@ class AttendanceController extends Controller
         }
 
         // Calculate total work time
-        $totalWorkSeconds = $attendance->total_work_seconds;
+        $totalWorkSeconds = $attendance->total_work_seconds ?? 0;
         if ($attendance->last_timer_start && !$this->isOnBreak($attendance->id)) {
-            $totalWorkSeconds += Carbon::now('Asia/Kolkata')->diffInSeconds(Carbon::parse($attendance->last_timer_start));
+            $lastTimerStart = Carbon::parse($attendance->last_timer_start);
+            $secondsSinceLastStart = $now->diffInSeconds($lastTimerStart);
+            Log::info('Adding seconds since last timer start', [
+                'last_timer_start' => $lastTimerStart->toDateTimeString(),
+                'seconds_added' => $secondsSinceLastStart,
+                'total_before' => $totalWorkSeconds
+            ]);
+            $totalWorkSeconds += $secondsSinceLastStart;
         }
 
-        // Check if total work time is less than 8 hours (28,800 seconds)
-        $isHalfDay = $totalWorkSeconds < 28800;
-        $halfDayMessage = $isHalfDay ? 'Your total work time is less than 8 hours. This will be marked as a half day.' : null;
+        // Calculate total break time
+        $totalBreakSeconds = DB::table('staff_breaks')
+            ->where('attendance_id', $attendance->id)
+            ->whereNotNull('break_end')
+            ->select(DB::raw('SUM(TIME_TO_SEC(TIMEDIFF(break_end, break_start))) as total_break_seconds'))
+            ->value('total_break_seconds') ?? 0;
 
-        // If forced check-out (confirmed despite half-day warning), update the record
-        if ($request->input('force_checkout')) {
-            $updateData = [
-                'total_work_seconds' => $totalWorkSeconds,
-                'logout' => $now->toDateTimeString(),
-                'last_timer_start' => null
-            ];
+        // Check for active break
+        $activeBreak = DB::table('staff_breaks')
+            ->where('attendance_id', $attendance->id)
+            ->whereNotNull('break_start')
+            ->whereNull('break_end')
+            ->first();
+        if ($activeBreak) {
+            $breakSeconds = $now->diffInSeconds(Carbon::parse($activeBreak->break_start));
+            $totalBreakSeconds += $breakSeconds;
+            DB::table('staff_breaks')
+                ->where('id', $activeBreak->id)
+                ->update([
+                    'break_end' => $now,
+                    'updated_at' => $now
+                ]);
+        }
 
-            // Only update mode to 'Half Day' if it wasn't explicitly set to 'Half Day' during check-in
-            if ($isHalfDay && $attendance->mode !== 'Half Day') {
+        Log::info('Calculated total work and break seconds', [
+            'total_work_seconds' => $totalWorkSeconds,
+            'total_break_seconds' => $totalBreakSeconds
+        ]);
+
+        // Fetch employee's work schedule
+        $employee = Employee::find($userId);
+        $updateData = [
+            'total_work_seconds' => $totalWorkSeconds,
+            'total_break_seconds' => $totalBreakSeconds,
+            'logout' => $now->toDateTimeString(),
+            'last_timer_start' => null
+        ];
+
+        $loginTime = Carbon::parse($attendance->created_at)->format('h:i:s A');
+        $logoutTime = $now->format('h:i:s A');
+        $totalBreakFormatted = $this->formatDuration($totalBreakSeconds);
+
+        // Only apply force checkout for specific values
+        if ($forceCheckout === 'half_day' || $forceCheckout === 'leave') {
+            Log::info('Force checkout applied', ['force_checkout' => $forceCheckout]);
+            if ($forceCheckout === 'half_day') {
                 $updateData['mode'] = 'Half Day';
+            } elseif ($forceCheckout === 'leave') {
+                $updateData['mode'] = 'Leave';
             }
+        } else {
+            // Check work schedule or default 8-hour rule
+            if ($employee->work_start_time && $employee->work_end_time) {
+                try {
+                    $workStart = Carbon::createFromFormat('H:i:s', $employee->work_start_time, 'Asia/Kolkata')->setDateFrom(Carbon::today('Asia/Kolkata'));
+                    $workEnd = Carbon::createFromFormat('H:i:s', $employee->work_end_time, 'Asia/Kolkata')->setDateFrom(Carbon::today('Asia/Kolkata'));
 
-            DB::table('staff_attendance')
-                ->where('id', $attendance->id)
-                ->update($updateData);
+                    if ($workEnd->lessThan($workStart)) {
+                        $workEnd->addDay();
+                    }
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Check-out successful.' . ($isHalfDay && $attendance->mode !== 'Half Day' ? ' Marked as a half day.' : '')
-            ]);
+                    $requiredWorkSeconds = $workEnd->diffInSeconds($workStart) - 300; // 5-minute buffer
+                    $halfDaySeconds = $requiredWorkSeconds / 2;
+
+                    $checkInTime = Carbon::parse($attendance->created_at)->setDateFrom(Carbon::today('Asia/Kolkata'));
+                    $lateThreshold = $workStart->copy()->addMinutes(15);
+                    $latenessSeconds = $checkInTime->greaterThan($lateThreshold) ? $checkInTime->diffInSeconds($workStart) : 0;
+
+                    $minCheckoutTime = $workEnd->copy()->addSeconds($latenessSeconds);
+
+                    Log::info('Work schedule check', [
+                        'work_start' => $workStart->toDateTimeString(),
+                        'work_end' => $workEnd->toDateTimeString(),
+                        'total_work_seconds' => $totalWorkSeconds,
+                        'required_work_seconds' => $requiredWorkSeconds,
+                        'half_day_seconds' => $halfDaySeconds,
+                        'lateness_seconds' => $latenessSeconds,
+                        'min_checkout_time' => $minCheckoutTime->toDateTimeString(),
+                        'current_time' => $now->toDateTimeString()
+                    ]);
+
+                    if ($totalWorkSeconds < $halfDaySeconds) {
+                        $hoursWorked = $this->formatHours($totalWorkSeconds);
+                        return response()->json([
+                            'success' => false,
+                            'leave_warning' => true,
+                            'message' => "You have worked {$hoursWorked}. Checking out now will mark your attendance as 'Leave'.",
+                            'total_work_seconds' => $totalWorkSeconds,
+                            'total_break_seconds' => $totalBreakSeconds,
+                            'total_break_formatted' => $totalBreakFormatted,
+                            'login_time' => $loginTime,
+                            'logout_time' => $logoutTime
+                        ]);
+                    } elseif ($totalWorkSeconds < $requiredWorkSeconds) {
+                        $hoursWorked = $this->formatHours($totalWorkSeconds);
+                        $timeLeftSeconds = max(0, $requiredWorkSeconds - $totalWorkSeconds);
+                        return response()->json([
+                            'success' => false,
+                            'half_day_warning' => true,
+                            'message' => "You have worked {$hoursWorked}. You need {$this->formatDuration($timeLeftSeconds)} more to complete your schedule. Checking out now will mark your attendance as 'Half Day'.",
+                            'total_work_seconds' => $totalWorkSeconds,
+                            'total_break_seconds' => $totalBreakSeconds,
+                            'total_break_formatted' => $totalBreakFormatted,
+                            'login_time' => $loginTime,
+                            'logout_time' => $logoutTime
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Error parsing work schedule', [
+                        'error' => $e->getMessage(),
+                        'work_start_time' => $employee->work_start_time,
+                        'work_end_time' => $employee->work_end_time
+                    ]);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid work schedule configuration. Please contact support.'
+                    ], 500);
+                }
+            } else {
+                // Default 8-hour rule
+                $requiredWorkSeconds = 8 * 3600; // 8 hours
+                $halfDaySeconds = 4 * 3600; // 4 hours
+
+                Log::info('Default 8-hour rule applied', [
+                    'total_work_seconds' => $totalWorkSeconds,
+                    'required_work_seconds' => $requiredWorkSeconds,
+                    'half_day_seconds' => $halfDaySeconds
+                ]);
+
+                if ($totalWorkSeconds < $halfDaySeconds) {
+                    $hoursWorked = $this->formatHours($totalWorkSeconds);
+                    return response()->json([
+                        'success' => false,
+                        'leave_warning' => true,
+                        'message' => "You have worked {$hoursWorked}. Checking out now will mark your attendance as 'Leave'.",
+                        'total_work_seconds' => $totalWorkSeconds,
+                        'total_break_seconds' => $totalBreakSeconds,
+                        'total_break_formatted' => $totalBreakFormatted,
+                        'login_time' => $loginTime,
+                        'logout_time' => $logoutTime
+                    ]);
+                } elseif ($totalWorkSeconds < $requiredWorkSeconds) {
+                    $hoursWorked = $this->formatHours($totalWorkSeconds);
+                    $timeLeftSeconds = max(0, $requiredWorkSeconds - $totalWorkSeconds);
+                    return response()->json([
+                        'success' => false,
+                        'half_day_warning' => true,
+                        'message' => "You have worked {$hoursWorked}. You need {$this->formatDuration($timeLeftSeconds)} more to complete 8 hours. Checking out now will mark your attendance as 'Half Day'.",
+                        'total_work_seconds' => $totalWorkSeconds,
+                        'total_break_seconds' => $totalBreakSeconds,
+                        'total_break_formatted' => $totalBreakFormatted,
+                        'login_time' => $loginTime,
+                        'logout_time' => $logoutTime
+                    ]);
+                }
+            }
         }
 
-        // If less than 8 hours, return half-day warning
-        if ($isHalfDay && $attendance->mode !== 'Half Day') {
-            return response()->json([
-                'success' => false,
-                'half_day_warning' => true,
-                'message' => $halfDayMessage,
-                'total_work_seconds' => $totalWorkSeconds
-            ]);
-        }
-
-        // Proceed with check-out if 8+ hours or mode is already 'Half Day'
+        // Proceed with checkout
+        Log::info('Proceeding with checkout', ['update_data' => $updateData]);
         DB::table('staff_attendance')
             ->where('id', $attendance->id)
-            ->update([
-                'total_work_seconds' => $totalWorkSeconds,
-                'logout' => $now->toDateTimeString(),
-                'last_timer_start' => null
-            ]);
+            ->update($updateData);
 
+        $successMessage = isset($updateData['mode']) ? "Check-out successful. Marked as {$updateData['mode']}." : 'Full working hours completed successfully.';
         return response()->json([
             'success' => true,
-            'message' => 'Check-out successful.'
+            'message' => $successMessage,
+            'login_time' => $loginTime,
+            'logout_time' => $logoutTime,
+            'total_break_seconds' => $totalBreakSeconds,
+            'total_break_formatted' => $totalBreakFormatted
         ]);
+    }
+
+    /**
+     * Helper function to format seconds to hours and minutes
+     */
+    private function formatHours($seconds)
+    {
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        return sprintf("%d hour%s %d minute%s", $hours, $hours != 1 ? 's' : '', $minutes, $minutes != 1 ? 's' : '');
+    }
+
+    /**
+     * Helper function to format duration in hours and minutes if >= 60 minutes, else minutes
+     */
+    private function formatDuration($seconds)
+    {
+        $minutes = floor($seconds / 60);
+        if ($minutes >= 60) {
+            $hours = floor($minutes / 60);
+            $remainingMinutes = $minutes % 60;
+            return sprintf("%d hour%s %d minute%s", $hours, $hours != 1 ? 's' : '', $remainingMinutes, $remainingMinutes != 1 ? 's' : '');
+        }
+        return sprintf("%d minute%s", $minutes, $minutes != 1 ? 's' : '');
     }
 
     public function break(Request $request)
@@ -296,6 +578,11 @@ class AttendanceController extends Controller
             ], 400);
         }
 
+        $totalBreakSeconds = (int) DB::table('staff_breaks')
+            ->where('attendance_id', $attendance->id)
+            ->whereNotNull('break_end')
+            ->sum(DB::raw('TIMESTAMPDIFF(SECOND, break_start, break_end)'));
+
         if ($action === 'start') {
             $activeBreak = DB::table('staff_breaks')
                 ->where('attendance_id', $attendance->id)
@@ -310,7 +597,10 @@ class AttendanceController extends Controller
                 ], 400);
             }
 
-            $totalWorkSeconds = $attendance->total_work_seconds + Carbon::now('Asia/Kolkata')->diffInSeconds(Carbon::parse($attendance->last_timer_start));
+            // Calculate total work seconds up to now
+            $start = Carbon::parse($attendance->created_at, 'Asia/Kolkata');
+            $sessionSeconds = $now->diffInSeconds($start);
+            $totalWorkSeconds = max(0, $sessionSeconds - $totalBreakSeconds);
 
             DB::table('staff_attendance')
                 ->where('id', $attendance->id)
@@ -330,7 +620,11 @@ class AttendanceController extends Controller
             return response()->json([
                 'success' => true,
                 'breakTime' => $now->toDateTimeString(),
-                'message' => 'Break started successfully.'
+                'message' => 'Break started successfully.',
+                'is_on_break' => true,
+                'total_work_seconds' => $totalWorkSeconds,
+                'total_break_seconds' => $totalBreakSeconds,
+                'attendance_id' => $attendance->id
             ]);
         }
 
@@ -348,6 +642,9 @@ class AttendanceController extends Controller
                 ], 400);
             }
 
+            $breakSeconds = $now->diffInSeconds(Carbon::parse($activeBreak->break_start));
+            $totalBreakSeconds += $breakSeconds;
+
             DB::table('staff_breaks')
                 ->where('id', $activeBreak->id)
                 ->update([
@@ -358,13 +655,19 @@ class AttendanceController extends Controller
             DB::table('staff_attendance')
                 ->where('id', $attendance->id)
                 ->update([
+                    'total_break_seconds' => $totalBreakSeconds,
                     'last_timer_start' => $now
                 ]);
 
             return response()->json([
                 'success' => true,
                 'breakTime' => $now->toDateTimeString(),
-                'message' => 'Break ended successfully.'
+                'message' => 'Break ended successfully.',
+                'is_on_break' => false,
+                'total_work_seconds' => $attendance->total_work_seconds ?? 0,
+                'total_break_seconds' => $totalBreakSeconds,
+                'attendance_id' => $attendance->id,
+                'approval_status' => $attendance->approval_status ?? 'pending'
             ]);
         }
     }
@@ -373,7 +676,7 @@ class AttendanceController extends Controller
     {
         $userId = Auth::id();
         $today = Carbon::today('Asia/Kolkata');
-        $totalWorkSeconds = $request->input('total_work_seconds', 0);
+        $now = Carbon::now('Asia/Kolkata');
 
         $attendance = DB::table('staff_attendance')
             ->where('user_id', $userId)
@@ -381,12 +684,25 @@ class AttendanceController extends Controller
             ->first();
 
         if ($attendance && !$attendance->logout && !$this->isOnBreak($attendance->id)) {
+            $start = Carbon::parse($attendance->created_at, 'Asia/Kolkata');
+            $sessionSeconds = $now->diffInSeconds($start);
+            $totalBreakSeconds = (int) DB::table('staff_breaks')
+                ->where('attendance_id', $attendance->id)
+                ->whereNotNull('break_end')
+                ->sum(DB::raw('TIMESTAMPDIFF(SECOND, break_start, break_end)'));
+            $totalWorkSeconds = max(0, $sessionSeconds - $totalBreakSeconds);
+
             DB::table('staff_attendance')
                 ->where('id', $attendance->id)
                 ->update([
                     'total_work_seconds' => $totalWorkSeconds,
-                    'last_timer_start' => Carbon::now('Asia/Kolkata')
+                    'last_timer_start' => $now
                 ]);
+
+            return response()->json([
+                'success' => true,
+                'total_work_seconds' => $totalWorkSeconds
+            ]);
         }
 
         return response()->json(['success' => true]);
@@ -396,6 +712,7 @@ class AttendanceController extends Controller
     {
         $userId = Auth::id();
         $today = Carbon::today('Asia/Kolkata');
+        $now = Carbon::now('Asia/Kolkata');
         $attendance = DB::table('staff_attendance')
             ->where('user_id', $userId)
             ->whereDate('attendance_date', $today)
@@ -406,23 +723,36 @@ class AttendanceController extends Controller
             'hasCheckedOut' => false,
             'isOnBreak' => false,
             'totalWorkSeconds' => 0,
-            'breakSeconds' => 0
+            'breakSeconds' => 0,
+            'attendance_id' => null
         ];
 
         if ($attendance) {
             $response['isCheckedIn'] = true;
             $response['hasCheckedOut'] = !is_null($attendance->logout);
-            $totalWorkSeconds = $attendance->total_work_seconds;
-            if ($attendance->last_timer_start && !$response['hasCheckedOut'] && !$this->isOnBreak($attendance->id)) {
-                $totalWorkSeconds += Carbon::now('Asia/Kolkata')->diffInSeconds(Carbon::parse($attendance->last_timer_start));
-            }
-            $response['totalWorkSeconds'] = $totalWorkSeconds;
             $response['isOnBreak'] = $this->isOnBreak($attendance->id);
-            $response['breakSeconds'] = DB::table('staff_breaks')
+            $response['attendance_id'] = $attendance->id;
+
+            $totalBreakSeconds = (int) DB::table('staff_breaks')
                 ->where('attendance_id', $attendance->id)
-                ->whereNotNull('break_start')
                 ->whereNotNull('break_end')
                 ->sum(DB::raw('TIMESTAMPDIFF(SECOND, break_start, break_end)'));
+            $response['breakSeconds'] = $totalBreakSeconds;
+
+            $totalWorkSeconds = $attendance->total_work_seconds ?? 0;
+            if (!$response['hasCheckedOut'] && !$response['isOnBreak']) {
+                $start = Carbon::parse($attendance->created_at, 'Asia/Kolkata');
+                $sessionSeconds = $now->diffInSeconds($start);
+                $totalWorkSeconds = max(0, $sessionSeconds - $totalBreakSeconds);
+                // Update database
+                DB::table('staff_attendance')
+                    ->where('id', $attendance->id)
+                    ->update([
+                        'total_work_seconds' => $totalWorkSeconds,
+                        'last_timer_start' => $now
+                    ]);
+            }
+            $response['totalWorkSeconds'] = $totalWorkSeconds;
         }
 
         return response()->json($response);
@@ -435,36 +765,6 @@ class AttendanceController extends Controller
             ->whereNotNull('break_start')
             ->whereNull('break_end')
             ->exists();
-    }
-
-    public function todaysReport(Request $request)
-    {
-        // Default to today's date if not provided.
-        $startDate = $request->input('start_date', \Carbon\Carbon::today()->toDateString());
-        $endDate   = $request->input('end_date', \Carbon\Carbon::today()->toDateString());
-
-        // Retrieve all employees.
-        $employees = \App\Models\Employee::whereNull('resignation')
-            ->where('status', 1)
-            ->get();
-
-        // Retrieve today's attendance records within the date range.
-        $attendanceQuery = \App\Models\StaffAttendance::whereBetween('attendance_date', [$startDate, $endDate]);
-        if ($request->filled('staff_id')) {
-            $attendanceQuery->where('user_id', $request->staff_id);
-        }
-        $attendances = $attendanceQuery->get()->keyBy('user_id');
-
-        // Retrieve today's task assignments for all employees within the date range.
-        // Eager load the related task with its project and service.
-        $assignedTasks = \App\Models\TaskAssigned::whereBetween('date', [$startDate, $endDate])
-            ->with(['task.project', 'task.service'])
-            ->get()
-            ->groupBy('staff_id');
-
-        $today = $startDate; // For header display
-
-        return view('attendance.todays_report', compact('employees', 'attendances', 'today', 'assignedTasks'));
     }
 
     public function update(Request $request)
@@ -497,6 +797,51 @@ class AttendanceController extends Controller
             'logout'     => $attendance->logout ? $attendance->logout->toDateTimeString() : '',
             'mode'       => $attendance->mode,
         ]);
+    }
+
+    public function todaysReport(Request $request)
+    {
+        // Default to today's date if not provided
+        $startDate = $request->input('start_date', Carbon::today('Asia/Kolkata')->toDateString());
+        $endDate = $request->input('end_date', Carbon::today('Asia/Kolkata')->toDateString());
+
+        // Retrieve all active employees
+        $employees = Employee::whereNull('resignation')
+            ->where('status', 1)
+            ->get();
+
+        // Retrieve attendance records within the date range
+        $attendanceQuery = StaffAttendance::whereBetween('attendance_date', [$startDate, $endDate]);
+        if ($request->filled('staff_id')) {
+            $attendanceQuery->where('user_id', $request->staff_id);
+        }
+        $attendances = $attendanceQuery->get()->map(function ($attendance) {
+            // Format login and logout times in AM/PM
+            $attendance->formatted_login_time = Carbon::parse($attendance->created_at)->format('h:i:s A');
+            $attendance->formatted_logout_time = $attendance->logout ? Carbon::parse($attendance->logout)->format('h:i:s A') : 'Still Working';
+
+            // Calculate work hours
+            $totalWorkSeconds = $attendance->total_work_seconds ?? 0;
+            if (!$attendance->logout && $attendance->last_timer_start && !$this->isOnBreak($attendance->id)) {
+                $totalWorkSeconds += Carbon::now('Asia/Kolkata')->diffInSeconds(Carbon::parse($attendance->last_timer_start));
+            }
+            $attendance->formatted_work_hours = $totalWorkSeconds > 0 ? $this->formatHours($totalWorkSeconds) : '-';
+            if (!$attendance->logout && $totalWorkSeconds > 0) {
+                $attendance->formatted_work_hours .= ' (Still Working)';
+            }
+
+            return $attendance;
+        })->keyBy('user_id');
+
+        // Retrieve task assignments with related task, project, and service
+        $assignedTasks = TaskAssigned::whereBetween('date', [$startDate, $endDate])
+            ->with(['task.project', 'task.service'])
+            ->get()
+            ->groupBy('staff_id');
+
+        $today = $startDate; // For header display
+
+        return view('attendance.todays_report', compact('employees', 'attendances', 'today', 'assignedTasks'));
     }
 
     /**
@@ -608,5 +953,4 @@ class AttendanceController extends Controller
 
         return view('attendance.leave_report', compact('records', 'startDate', 'endDate', 'employees', 'staffId'));
     }
-
 }
