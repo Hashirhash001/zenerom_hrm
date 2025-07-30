@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Employee extends Model
 {
     protected $fillable = [
+        'user_id',
         'employee_id',
         'first_name',
         'middle_name',
@@ -31,7 +32,7 @@ class Employee extends Model
         'resignation_details',
         'role_id',
         'work_start_time',
-        'work_end_time',
+        'work_end_time'
     ];
    public function department()
     {
@@ -45,7 +46,7 @@ class Employee extends Model
 
     public function user()
     {
-        return $this->hasOne(\App\Models\User::class, 'user_id');
+        return $this->belongsTo(\App\Models\User::class, 'user_id', 'id');
     }
     public function accessPrivileges()
     {

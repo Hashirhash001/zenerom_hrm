@@ -19,11 +19,11 @@
         </div>
         <div class="form-group">
             <label for="start_date">Start Date</label>
-            <input type="date" class="form-control" name="start_date" id="start_date" required>
+            <input type="date" class="form-control" name="start_date" id="start_date" onclick="this.showPicker() required>
         </div>
         <div class="form-group">
             <label for="end_date">End Date</label>
-            <input type="date" class="form-control" name="end_date" id="end_date" required>
+            <input type="date" class="form-control" name="end_date" id="end_date" onclick="this.showPicker() required>
         </div>
         <div class="form-group">
             <label for="reason">Reason (Optional)</label>

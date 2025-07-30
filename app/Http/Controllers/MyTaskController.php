@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use Carbon\Carbon;
 use App\Models\Task;
 use App\Models\Project;
@@ -22,50 +23,153 @@ class MyTaskController extends Controller
     public function index(Request $request)
     {
         $userId = Auth::id();
-        $projects = \App\Models\Project::orderBy('name')->get();
-        $services = \App\Models\Service::orderBy('name')->get();
-        $staffs   = \App\Models\Employee::whereNull('resignation')
-                    ->where('status', 1)
-                    ->orderBy('first_name')
-                    ->get();
+        $projects = Project::orderBy('name')->get();
+        $services = Service::orderBy('name')->get();
+        $staffs = Employee::whereNull('resignation')
+            ->where('status', 1)
+            ->orderBy('first_name')
+            ->get();
+
+        // Determine if the user is an admin or authorized (role_id in [1, 2, 3, 7])
+        $isAdminOrAuthorized = Auth::check() && in_array(Auth::user()->role_id ?? 0, [1, 2, 3, 7]);
+
+        // Get filter parameters
+        $projectId = $request->input('project_id');
+        $serviceId = $request->input('service_id');
+        $status = $request->input('status');
+        $search = $request->input('search');
+        $perPage = $request->input('length', 10);
+        $sortColumn = $request->input('sort_column', 'created_at');
+        $sortDirection = $request->input('sort_direction', 'desc');
+
+        // Validate sort column to prevent SQL injection
+        $validColumns = ['id', 'title', 'description', 'deadline', 'status', 'created_at'];
+        $sortColumn = in_array($sortColumn, $validColumns) ? $sortColumn : 'created_at';
+        $sortDirection = in_array(strtolower($sortDirection), ['asc', 'desc']) ? $sortDirection : 'desc';
 
         if ($request->ajax()) {
-            // For AJAX, return all tasks (for loadAllTasks)
-            $tasks = Task::where(function ($query) use ($userId) {
+            // For AJAX, return all tasks with filters, search, pagination, and sorting
+            $query = Task::where(function ($query) use ($userId) {
                 $query->where('created_by', $userId)
                     ->orWhereHas('taskUsers', function ($q) use ($userId) {
                         $q->where('user_id', $userId);
                     });
             })
-            ->with(['service', 'creator', 'assignments' => function ($q) {
-                $q->whereDate('date', \Carbon\Carbon::today());
-            }])
-            ->orderByDesc('created_at')
-            ->get();
-        } else {
-            // For initial view, return only today's tasks (same as today method)
-            $tasks = Task::whereHas('assignments', function ($q) use ($userId) {
-                $q->where('staff_id', $userId)
-                  ->whereDate('date', \Carbon\Carbon::today());
-            })
-            ->with(['service', 'creator', 'assignments' => function ($q) {
-                $q->whereDate('date', \Carbon\Carbon::today());
-            }])
-            ->orderByDesc('created_at')
-            ->get();
+                ->with(['service', 'creator', 'project', 'assignments' => function ($q) {
+                    $q->whereDate('date', Carbon::today());
+                }]);
+
+            // Apply filters
+            if ($projectId) {
+                $query->where('project_id', $projectId);
+            }
+            if ($serviceId) {
+                $query->where('service_id', $serviceId);
+            }
+            if ($status && $status !== 'all') {
+                $query->where('status', $status);
+            }
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%")
+                        ->orWhere('id', 'like', "%{$search}%")
+                        ->orWhere('status', 'like', "%{$search}%");
+                });
+            }
+
+            // Apply sorting with special handling for deadline
+            if ($sortColumn === 'deadline') {
+                $query->orderByRaw('ISNULL(deadline) ' . $sortDirection . ', deadline ' . $sortDirection);
+            } else {
+                $query->orderBy($sortColumn, $sortDirection);
+            }
+
+            // Paginate results
+            $tasks = $query->paginate($perPage);
+
+            // Process tasks for tdtask and all_assigned_updated flags
+            foreach ($tasks as $task) {
+                $assignedTasks = TaskAssigned::where('task_id', $task->id)
+                    ->whereDate('date', Carbon::today())
+                    ->get();
+                $assignedCount = $assignedTasks->count();
+                $task->tdtask = $assignedCount > 0 ? 1 : 0;
+
+                if ($task->tdtask == 1) {
+                    $docCount = TaskDocument::where('task_id', $task->id)
+                        ->whereDate('created_at', Carbon::today()->toDateString())
+                        ->count();
+                    $task->doc_count = $docCount;
+                    $task->all_assigned_updated = ($docCount >= $assignedCount);
+                } else {
+                    $task->doc_count = 0;
+                    $task->all_assigned_updated = false;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'tasks' => $tasks->items(),
+                'pagination' => [
+                    'total' => $tasks->total(),
+                    'per_page' => $tasks->perPage(),
+                    'current_page' => $tasks->currentPage(),
+                    'last_page' => $tasks->lastPage(),
+                    'from' => $tasks->firstItem(),
+                    'to' => $tasks->lastItem(),
+                ],
+                'isAdminOrAuthorized' => $isAdminOrAuthorized
+            ]);
         }
+
+        // For initial view, return today's tasks with filters, pagination, and sorting
+        $query = Task::whereHas('assignments', function ($q) use ($userId) {
+            $q->where('staff_id', $userId)
+                ->whereDate('date', Carbon::today());
+        })
+            ->with(['service', 'creator', 'project', 'assignments' => function ($q) {
+                $q->whereDate('date', Carbon::today());
+            }]);
+
+        // Apply filters
+        if ($projectId) {
+            $query->where('project_id', $projectId);
+        }
+        if ($serviceId) {
+            $query->where('service_id', $serviceId);
+        }
+        if ($status && $status !== 'all') {
+            $query->where('status', $status);
+        }
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        // Apply sorting with special handling for deadline
+        if ($sortColumn === 'deadline') {
+            $query->orderByRaw('ISNULL(deadline) ' . $sortDirection . ', deadline ' . $sortDirection);
+        } else {
+            $query->orderBy($sortColumn, $sortDirection);
+        }
+
+        // Paginate results
+        $tasks = $query->paginate($perPage);
 
         // Process tasks for tdtask and all_assigned_updated flags
         foreach ($tasks as $task) {
             $assignedTasks = TaskAssigned::where('task_id', $task->id)
-                ->whereDate('date', \Carbon\Carbon::today())
+                ->whereDate('date', Carbon::today())
                 ->get();
             $assignedCount = $assignedTasks->count();
             $task->tdtask = $assignedCount > 0 ? 1 : 0;
 
             if ($task->tdtask == 1) {
                 $docCount = TaskDocument::where('task_id', $task->id)
-                    ->whereDate('created_at', \Carbon\Carbon::today()->toDateString())
+                    ->whereDate('created_at', Carbon::today()->toDateString())
                     ->count();
                 $task->doc_count = $docCount;
                 $task->all_assigned_updated = ($docCount >= $assignedCount);
@@ -76,95 +180,125 @@ class MyTaskController extends Controller
         }
 
         $tdtaskcnt = TaskAssigned::where('staff_id', $userId)
-            ->whereDate('date', \Carbon\Carbon::today())
+            ->whereDate('date', Carbon::today())
             ->count();
 
-        if ($request->ajax()) {
-            return response()->json([
-                'success' => true,
-                'tasks' => $tasks->map(function ($task) {
-                    return [
-                        'id' => $task->id,
-                        'title' => $task->title,
-                        'description' => $task->description,
-                        'date' => $task->date,
-                        'status' => $task->status,
-                        'project' => $task->project ? ['name' => $task->project->name] : null,
-                        'service' => $task->service ? ['name' => $task->service->name] : null,
-                        'creator' => $task->creator ? [
-                            'first_name' => $task->creator->first_name,
-                            'middle_name' => $task->creator->middle_name,
-                            'last_name' => $task->creator->last_name
-                        ] : null,
-                        'tdtask' => $task->tdtask,
-                        'all_assigned_updated' => $task->all_assigned_updated
-                    ];
-                })
-            ]);
-        }
-
-        return view('my_tasks.index', compact('tasks', 'projects', 'services', 'staffs', 'tdtaskcnt', 'userId'));
+        return view('my_tasks.index', compact('tasks', 'projects', 'services', 'staffs', 'tdtaskcnt', 'userId', 'isAdminOrAuthorized', 'projectId', 'serviceId', 'status', 'search', 'sortColumn', 'sortDirection'));
     }
 
-     public function today(Request $request)
-     {
-         $userId = Auth::id();
+    public function today(Request $request)
+    {
+        $userId = Auth::id();
 
-         // Retrieve tasks assigned to the user for today
-         $tasks = Task::whereHas('assignments', function ($q) use ($userId) {
-             $q->where('staff_id', $userId)
-               ->whereDate('date', \Carbon\Carbon::today());
-         })
-         ->with(['service', 'creator', 'assignments' => function ($q) {
-             $q->whereDate('date', \Carbon\Carbon::today());
-         }])
-         ->orderByDesc('created_at')
-         ->get();
+        // Get filter parameters
+        $projectId = $request->input('project_id');
+        $serviceId = $request->input('service_id');
+        $status = $request->input('status');
+        $search = $request->input('search');
+        $perPage = $request->input('length', 10);
+        $sortColumn = $request->input('sort_column', 'created_at');
+        $sortDirection = $request->input('sort_direction', 'desc');
 
-         // Process tasks for tdtask and all_assigned_updated flags
-         foreach ($tasks as $task) {
-             $assignedTasks = TaskAssigned::where('task_id', $task->id)
-                 ->whereDate('date', \Carbon\Carbon::today())
-                 ->get();
-             $assignedCount = $assignedTasks->count();
-             $task->tdtask = $assignedCount > 0 ? 1 : 0;
+        // Validate sort column to prevent SQL injection
+        $validColumns = ['id', 'title', 'description', 'deadline', 'status', 'created_at'];
+        $sortColumn = in_array($sortColumn, $validColumns) ? $sortColumn : 'created_at';
+        $sortDirection = in_array(strtolower($sortDirection), ['asc', 'desc']) ? $sortDirection : 'desc';
 
-             if ($task->tdtask == 1) {
-                 $docCount = TaskDocument::where('task_id', $task->id)
-                     ->whereDate('created_at', \Carbon\Carbon::today()->toDateString())
-                     ->count();
-                 $task->doc_count = $docCount;
-                 $task->all_assigned_updated = ($docCount >= $assignedCount);
-             } else {
-                 $task->doc_count = 0;
-                 $task->all_assigned_updated = false;
-             }
-         }
+        // Retrieve tasks assigned to the user for today with filters, pagination, and sorting
+        $query = Task::whereHas('assignments', function ($q) use ($userId) {
+            $q->where('staff_id', $userId)
+                ->whereDate('date', Carbon::today());
+        })
+            ->with(['service', 'creator', 'project', 'assignments' => function ($q) {
+                $q->whereDate('date', Carbon::today());
+            }]);
 
-         return response()->json([
-             'success' => true,
-             'tasks' => $tasks->map(function ($task) {
-                 return [
-                     'id' => $task->id,
-                     'title' => $task->title,
-                     'description' => $task->description,
-                     'date' => $task->date,
-                     'status' => $task->status,
-                     'project' => $task->project ? ['name' => $task->project->name] : null,
-                     'service' => $task->service ? ['name' => $task->service->name] : null,
-                     'creator' => $task->creator ? [
-                         'first_name' => $task->creator->first_name,
-                         'middle_name' => $task->creator->middle_name,
-                         'last_name' => $task->creator->last_name
-                     ] : null,
-                     'tdtask' => $task->tdtask,
-                     'all_assigned_updated' => $task->all_assigned_updated
-                 ];
-             })
-         ]);
-     }
+        // Apply filters
+        if ($projectId) {
+            $query->where('project_id', $projectId);
+        }
+        if ($serviceId) {
+            $query->where('service_id', $serviceId);
+        }
+        if ($status && $status !== 'all') {
+            $query->where('status', $status);
+        }
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('status', 'like', "%{$search}%")
+                    ->orWhere('id', 'like', "%{$search}%");
+            });
+        }
 
+        // Apply sorting with special handling for deadline
+        if ($sortColumn === 'deadline') {
+            $query->orderByRaw('ISNULL(deadline) ' . $sortDirection . ', deadline ' . $sortDirection);
+        } else {
+            $query->orderBy($sortColumn, $sortDirection);
+        }
 
+        // Paginate results
+        $tasks = $query->paginate($perPage);
+
+        // Process tasks for tdtask and all_assigned_updated flags
+        foreach ($tasks as $task) {
+            $assignedTasks = TaskAssigned::where('task_id', $task->id)
+                ->whereDate('date', Carbon::today())
+                ->get();
+            $assignedCount = $assignedTasks->count();
+            $task->tdtask = $assignedCount > 0 ? 1 : 0;
+
+            if ($task->tdtask == 1) {
+                $docCount = TaskDocument::where('task_id', $task->id)
+                    ->whereDate('created_at', Carbon::today()->toDateString())
+                    ->count();
+                $task->doc_count = $docCount;
+                $task->all_assigned_updated = ($docCount >= $assignedCount);
+            } else {
+                $task->doc_count = 0;
+                $task->all_assigned_updated = false;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'tasks' => $tasks->items(),
+            'pagination' => [
+                'total' => $tasks->total(),
+                'per_page' => $tasks->perPage(),
+                'current_page' => $tasks->currentPage(),
+                'last_page' => $tasks->lastPage(),
+                'from' => $tasks->firstItem(),
+                'to' => $tasks->lastItem(),
+            ]
+        ]);
+    }
+
+    public function updateStatus(Request $request, $id)
+    {
+        $userId = Auth::id();
+        $validated = $request->validate([
+            'status' => 'required|in:pending,in_progress,completed,hold',
+        ]);
+
+        // Find the task and ensure the user is assigned to it
+        $task = Task::where('id', $id)
+            ->whereHas('assignments', function ($q) use ($userId) {
+                $q->where('staff_id', $userId)
+                    ->whereDate('date', \Carbon\Carbon::today());
+            })
+            ->firstOrFail();
+
+        // Update the task status
+        $task->update(['status' => $validated['status']]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Task status updated successfully!'
+        ]);
+    }
 
     /**
      * Store a newly created task.
@@ -182,11 +316,11 @@ class MyTaskController extends Controller
             'deadline'    => 'nullable|date',
             'status'      => 'required|in:pending,in_progress,completed,hold',
             'assign_self' => 'nullable|boolean',
-            'frequency'   => 'required_if:assign_self,1|string|in:One-time,Daily,Once in a week,2 in a week,3 in a week,4 in a week,Monthly,2 in Month,3 in Month,4 in Month',
-            'start_date'  => 'required_if:frequency,Daily,Once in a week,2 in a week,3 in a week,4 in a week,Monthly,2 in Month,3 in Month,4 in Month|nullable|date',
-            'end_date'    => 'required_if:frequency,One-time|nullable|date',
-            'selected_days'  => 'required_if:frequency,Once in a week,2 in a week,3 in a week,4 in a week|nullable|array',
-            'selected_dates' => 'required_if:frequency,Monthly,2 in Month,3 in Month,4 in Month|nullable|array',
+            'frequency'   => 'nullable|string|in:One-time,Daily,Once in a week,2 in a week,3 in a week,4 in a week,Monthly,2 in Month,3 in Month,4 in Month',
+            'start_date'  => 'nullable|date',
+            'end_date'    => 'nullable|date|required_if:frequency,One-time',
+            'selected_days'  => 'nullable|array|required_if:frequency,Once in a week,2 in a week,3 in a week,4 in a week',
+            'selected_dates' => 'nullable|array|required_if:frequency,Monthly,2 in Month,3 in Month,4 in Month',
         ]);
         Log::info('Validated Data:', $validated);
 
@@ -296,7 +430,8 @@ class MyTaskController extends Controller
             'task'     => $task,
         ]);
     }
-     public function report(Request $request)
+
+    public function report(Request $request)
     {
         $userId = Auth::id();
 
@@ -324,5 +459,4 @@ class MyTaskController extends Controller
 
         return view('my_tasks.report', compact('assignments', 'startDate', 'endDate', 'staffId', 'employees'));
     }
-
 }

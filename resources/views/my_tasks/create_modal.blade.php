@@ -39,7 +39,7 @@
         <!-- Deadline -->
         <div class="mb-3">
             <label for="taskDeadline" class="form-label">Deadline</label>
-            <input type="date" class="form-control" id="taskDeadline" name="deadline">
+            <input type="date" class="form-control" id="taskDeadline" name="deadline" onclick="this.showPicker()">
         </div>
         <!-- Status -->
         <div class="mb-3">
@@ -54,16 +54,17 @@
         <!-- Assign to Self -->
         <div class="mb-3">
             <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="assignSelf" name="assign_self" value="1">
+                <input class="form-check-input" type="checkbox" id="assignSelf" name="assign_self" value="1" checked disabled>
                 <label class="form-check-label" for="assignSelf">Assign this task to myself</label>
+                <input type="hidden" name="assign_self" value="1">
             </div>
         </div>
         <!-- Frequency Type -->
-        <div class="mb-3" id="frequencyFields" style="display: none;">
+        <div class="mb-3" id="frequencyFields">
             <label for="addTaskFrequency" class="form-label">Frequency</label>
             <select class="form-control" id="addTaskFrequency" name="frequency">
                 <option value="">Select Frequency</option>
-                <option value="One-time">One-time</option>
+                <option value="One-time" selected>One-time</option>
                 <option value="Daily">Daily</option>
                 <option value="Once in a week">Once in a week</option>
                 <option value="2 in a week">2 in a week</option>
@@ -76,14 +77,14 @@
             </select>
         </div>
         <!-- Conditional Fields for One-time -->
-        <div class="mb-3 d-none" id="oneTimeFields">
+        <div class="mb-3" id="oneTimeFields">
             <label class="form-label">End Date</label>
-            <input type="date" class="form-control" name="end_date">
+            <input type="date" class="form-control" name="end_date" value="{{ session('task_end_date', \Carbon\Carbon::today()->format('Y-m-d')) }}" onclick="this.showPicker()">
         </div>
         <!-- Conditional Fields for Daily or Weekly -->
         <div class="mb-3 d-none" id="dailyWeeklyFields">
             <label class="form-label">Start Date</label>
-            <input type="date" class="form-control" name="start_date">
+            <input type="date" class="form-control" name="start_date" value="{{ session('task_start_date', \Carbon\Carbon::today()->format('Y-m-d')) }}" onclick="this.showPicker()">
         </div>
         <!-- Conditional Fields for Weekly Frequencies -->
         <div class="mb-3 d-none" id="weeklyFields">

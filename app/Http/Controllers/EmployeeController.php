@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Role;
 use App\Models\User;
 use App\Models\Employee;
 use App\Models\Department;
-
+use App\Models\Role;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
 
 class EmployeeController extends Controller
 {
@@ -78,6 +78,46 @@ class EmployeeController extends Controller
             $validated['cv_file'] = $filename;
         }
 
+        // Find or create user by email
+        $user = User::where('email', $validated['email'])->first();
+        if (!$user) {
+            $user = User::create([
+                'name' => trim($validated['first_name'] . ' ' . ($validated['middle_name'] ?? '') . ' ' . $validated['last_name']),
+                'email' => $validated['email'],
+                'password' => Hash::make('default_password'), // Replace with a secure default or generate dynamically
+                'role_id' => $validated['role_id'] ?? null,
+                'department_id' => $validated['department_id'] ?? null,
+                'status' => $validated['status'] ?? 1,
+            ]);
+            Log::info('Created new user for employee', [
+                'user_id' => $user->id,
+                'email' => $validated['email'],
+                'employee_id' => $validated['employee_id']
+            ]);
+        } else {
+            // Update existing user's role_id and department_id if provided
+            $updateData = [];
+            if (isset($validated['role_id'])) {
+                $updateData['role_id'] = $validated['role_id'];
+            }
+            if (isset($validated['department_id'])) {
+                $updateData['department_id'] = $validated['department_id'];
+            }
+            if (!empty($updateData)) {
+                $user->update($updateData);
+                Log::info('Updated user for employee', [
+                    'user_id' => $user->id,
+                    'updates' => $updateData,
+                    'employee_id' => $validated['employee_id'],
+                    'email' => $validated['email']
+                ]);
+            }
+        }
+
+        // Set user_id for the employee
+        $validated['user_id'] = $user->id;
+
+        // Create the employee record
         $employee = Employee::create($validated);
 
         return response()->json([
@@ -86,7 +126,6 @@ class EmployeeController extends Controller
             'employee'  => $employee,
         ]);
     }
-
     public function departmentEmployees(Request $request)
     {
         $techhead = Auth::user();

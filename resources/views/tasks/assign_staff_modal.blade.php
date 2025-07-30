@@ -12,7 +12,7 @@
             <label for="assignStaffFrequency" class="form-label">Frequency</label>
             <select class="form-control" id="assignStaffFrequency" name="frequency" required>
                 <option value="">Select Frequency</option>
-                <option value="One-time">One-time</option>
+                <option value="One-time" selected>One-time</option>
                 <option value="Daily">Daily</option>
                 <option value="Once in a week">Once in a week</option>
                 <option value="2 in a week">2 in a week</option>
@@ -27,12 +27,13 @@
         <!-- Conditional Fields for One-time -->
         <div class="mb-3 d-none" id="oneTimeFields">
             <label class="form-label">End Date</label>
-            <input type="date" class="form-control" name="end_date">
+            <input type="date" class="form-control" name="end_date" value="{{ session('task_end_date', \Carbon\Carbon::today()->format('Y-m-d')) }}" onclick="this.showPicker()">
         </div>
+
         <!-- Conditional Fields for Daily or Weekly -->
         <div class="mb-3 d-none" id="dailyWeeklyFields">
             <label class="form-label">Start Date</label>
-            <input type="date" class="form-control" name="start_date">
+            <input type="date" class="form-control" name="start_date" value="{{ session('task_start_date', \Carbon\Carbon::today()->format('Y-m-d')) }}" onclick="this.showPicker()">
         </div>
         <!-- Conditional Fields for Weekly Frequencies -->
         <div class="mb-3 d-none" id="weeklyFields">

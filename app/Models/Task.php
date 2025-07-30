@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Task extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     // Allow mass assignment for these fields.
     protected $fillable = [
@@ -35,7 +36,7 @@ class Task extends Model
     {
         return $this->hasMany(\App\Models\TaskAssigned::class, 'task_id');
     }
-    
+
     public function staff()
     {
         return $this->belongsTo(\App\Models\Employee::class, 'staff_id');
@@ -50,8 +51,8 @@ class Task extends Model
         return $this->belongsTo(\App\Models\Employee::class, 'created_by');
     }
 
-    
-    
+
+
 
 
 

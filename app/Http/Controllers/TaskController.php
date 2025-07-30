@@ -17,76 +17,151 @@ use Illuminate\Support\Facades\Auth;
 
 class TaskController extends Controller
 {
-    // Display tasks index page.
-
+    /**
+     * Display a listing of the tasks.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\View\View
+     */
     public function index(Request $request)
     {
-        $user = Auth::user();
-        $query = \App\Models\Task::query();
+        try {
+            $user = Auth::user();
+            $query = Task::query();
 
-        // If user role is 3, restrict tasks to those created by them or with a service
-        // in their department.
-        if ($user->role_id == 3) {
-            $departmentId = optional($user->employee)->department_id;
-            $query->where(function($q) use ($user, $departmentId) {
-                $q->where('created_by', $user->id)
-                ->orWhereHas('service', function($q2) use ($departmentId) {
-                    $q2->where('department_id', $departmentId);
+            // Role-based filtering
+            if ($user->role_id == 3) {
+                $departmentId = optional($user->employee)->department_id;
+                $query->where(function ($q) use ($user, $departmentId) {
+                    $q->where('created_by', $user->id)
+                    ->orWhereHas('service', function ($q2) use ($departmentId) {
+                        $q2->where('department_id', $departmentId);
+                    });
                 });
-            });
-        }
+            }
 
-        // Filter by created date range (optional)
-        if ($request->filled('created_start') && $request->filled('created_end')) {
-            $query->whereBetween('created_at', [
-                \Carbon\Carbon::parse($request->input('created_start'))->startOfDay(),
-                \Carbon\Carbon::parse($request->input('created_end'))->endOfDay()
+            // Apply search
+            if ($request->filled('query')) {
+                $search = $request->input('query');
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('id', 'like', "%{$search}%")
+                    ->orWhere('status', 'like', "%{$search}%");
+                });
+            }
+
+            // Apply filters
+            if ($request->filled('created_start') && $request->filled('created_end')) {
+                $query->whereBetween('created_at', [
+                    Carbon::parse($request->input('created_start'))->startOfDay(),
+                    Carbon::parse($request->input('created_end'))->endOfDay()
+                ]);
+            }
+
+            if ($request->filled('deadline_start') && $request->filled('deadline_end')) {
+                $query->whereBetween('deadline', [
+                    Carbon::parse($request->input('deadline_start'))->startOfDay(),
+                    Carbon::parse($request->input('deadline_end'))->endOfDay()
+                ]);
+            }
+
+            if ($request->filled('assigned_by')) {
+                $query->where('created_by', $request->input('assigned_by'));
+            }
+
+            if ($request->filled('assigned_staff')) {
+                $query->whereHas('assignments', function ($q) use ($request) {
+                    $q->where('staff_id', $request->input('assigned_staff'));
+                });
+            }
+
+            if ($request->filled('project_id')) {
+                $query->where('project_id', $request->input('project_id'));
+            }
+
+            if ($request->filled('service_id')) {
+                $query->where('service_id', $request->input('service_id'));
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->input('status'));
+            }
+
+            // Apply sorting
+            $sortBy = $request->input('sort_by', 'created_at');
+            $sortDirection = $request->input('sort_direction', 'desc');
+            $query->orderBy($sortBy, $sortDirection);
+
+            // Paginate results
+            /** @var \Illuminate\Pagination\LengthAwarePaginator $tasks */
+            $tasks = $query->with(['creator', 'assignments.staff', 'service', 'project'])
+                        ->paginate(10);
+
+            // Load additional data for filters
+            $projects = Project::orderBy('name')->get();
+            $services = Service::orderBy('name')->get();
+            $staffs = Employee::whereNull('resignation')
+                            ->where('status', 1)
+                            ->orderBy('first_name')
+                            ->get();
+
+            if ($request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'tasks' => collect($tasks->items())->map(function ($task): array {
+                        return [
+                            'id' => $task->id,
+                            'title' => $task->title,
+                            'description' => $task->description,
+                            'deadline' => $task->deadline,
+                            'status' => $task->status,
+                            'project' => $task->project ? ['id' => $task->project->id, 'name' => $task->project->name] : null,
+                            'service' => $task->service ? ['id' => $task->service->id, 'name' => $task->service->name] : null,
+                            'creator' => $task->creator ? [
+                                'first_name' => $task->creator->first_name,
+                                'middle_name' => $task->creator->middle_name,
+                                'last_name' => $task->creator->last_name
+                            ] : null,
+                            'assignments' => $task->assignments->map(function ($assignment) {
+                                return [
+                                    'staff' => $assignment->staff ? [
+                                        'id' => $assignment->staff->id,
+                                        'first_name' => $assignment->staff->first_name,
+                                        'last_name' => $assignment->staff->last_name // Fixed typo
+                                    ] : null
+                                ];
+                            })->toArray()
+                        ];
+                    })->toArray(),
+                    'pagination' => [
+                        'current_page' => $tasks->currentPage(),
+                        'last_page' => $tasks->lastPage(),
+                        'total' => $tasks->total(),
+                        'per_page' => $tasks->perPage()
+                    ]
+                ]);
+            }
+
+            // Non-AJAX response
+            /** @var \Illuminate\View\View $view */
+            $view = view('tasks.index', compact('tasks', 'projects', 'services', 'staffs'));
+            return $view;
+        } catch (\Exception $e) {
+            Log::error('Error in index method', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
+            if ($request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error loading tasks: ' . $e->getMessage(),
+                ], 500);
+            }
+            /** @var \Illuminate\View\View $view */
+            $view = view('tasks.index', compact('projects', 'services', 'staffs'));
+            return $view->withErrors(['error' => 'Error loading tasks: ' . $e->getMessage()]);
         }
-
-        // Filter by deadline range (optional)
-        if ($request->filled('deadline_start') && $request->filled('deadline_end')) {
-            $query->whereBetween('deadline', [
-                \Carbon\Carbon::parse($request->input('deadline_start'))->startOfDay(),
-                \Carbon\Carbon::parse($request->input('deadline_end'))->endOfDay()
-            ]);
-        }
-
-        // Filter by assigned by (task creator)
-        if ($request->filled('assigned_by')) {
-            $query->where('created_by', $request->input('assigned_by'));
-        }
-
-        // Filter by project
-        if ($request->filled('project_id')) {
-            $query->where('project_id', $request->input('project_id'));
-        }
-
-        // Filter by service
-        if ($request->filled('service_id')) {
-            $query->where('service_id', $request->input('service_id'));
-        }
-
-        // New Filter: Filter by assigned staff (based on TaskAssigned records)
-        if ($request->filled('assigned_staff')) {
-            $query->whereHas('assignments', function($q) use ($request) {
-                $q->where('staff_id', $request->input('assigned_staff'));
-            });
-        }
-
-        // Eager load the creator, assignments with staff, and service.
-        $tasks = $query->with(['creator', 'assignments.staff', 'service'])
-                    ->orderByDesc('created_at')
-                    ->get();
-
-        $projects = \App\Models\Project::orderBy('name')->get();
-        $services = \App\Models\Service::orderBy('name')->get();
-        $staffs   = \App\Models\Employee::whereNull('resignation')
-                    ->where('status', 1)
-                    ->orderBy('first_name')
-                    ->get();
-
-        return view('tasks.index', compact('tasks', 'projects', 'services', 'staffs'));
     }
 
     // Store a new task.
@@ -284,43 +359,152 @@ class TaskController extends Controller
     }
 
     // Delete a task.
-   public function destroy($id)
-{
-    $task = Task::findOrFail($id);
+    public function destroy($id)
+    {
+        $task = Task::findOrFail($id);
 
-    // Check if there are any subtasks (TaskAssigned records) for this task.
-    $assignedCount = \App\Models\TaskAssigned::where('task_id', $id)->count();
+        // Soft delete all subtasks (TaskAssigned records)
+        \App\Models\TaskAssigned::where('task_id', $id)->delete();
 
-    if ($assignedCount > 0) {
+        // Soft delete the task
+        $task->delete();
+
         return response()->json([
-            'success' => false,
-            'message' => 'Please verify and remove all subtasks before proceeding to delete this task.'
-        ], 422);
+            'success' => true,
+            'message' => 'Task and its subtasks deleted successfully!'
+        ]);
     }
 
-    $task->delete();
-
-    return response()->json([
-        'success' => true,
-        'message' => 'Task deleted successfully!'
-    ]);
-}
-
-
-    // Optional: Live search for tasks.
+    //Live search for tasks.
     public function search(Request $request)
     {
-        $query = $request->query('query');
+        try {
+            $query = Task::query();
+            $user = Auth::user();
 
-        // Search tasks by title or description.
-        $tasks = Task::where('title', 'like', "%{$query}%")
-                     ->orWhere('description', 'like', "%{$query}%")
-                     ->get();
+            // Role-based filtering
+            if ($user->role_id == 3) {
+                $departmentId = optional($user->employee)->department_id;
+                $query->where(function ($q) use ($user, $departmentId) {
+                    $q->where('created_by', $user->id)
+                    ->orWhereHas('service', function ($q2) use ($departmentId) {
+                        $q2->where('department_id', $departmentId);
+                    });
+                });
+            }
 
-        // Render the HTML using the _list partial.
-        $html = view('tasks._list', compact('tasks'))->render();
+            // Apply search
+            if ($request->filled('query')) {
+                $search = $request->input('query');
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('id', 'like', "%{$search}%")
+                    ->orWhere('status', 'like', "%{$search}%");
+                });
+            }
 
-        return response()->json(['html' => $html]);
+            // Apply filters
+            if ($request->filled('created_start') && $request->filled('created_end')) {
+                $query->whereBetween('created_at', [
+                    Carbon::parse($request->input('created_start'))->startOfDay(),
+                    Carbon::parse($request->input('created_end'))->endOfDay()
+                ]);
+            }
+
+            if ($request->filled('deadline_start') && $request->filled('deadline_end')) {
+                $query->whereBetween('deadline', [
+                    Carbon::parse($request->input('deadline_start'))->startOfDay(),
+                    Carbon::parse($request->input('deadline_end'))->endOfDay()
+                ]);
+            }
+
+            if ($request->filled('assigned_by')) {
+                $query->where('created_by', $request->input('assigned_by'));
+            }
+
+            if ($request->filled('assigned_staff')) {
+                $query->whereHas('assignments', function ($q) use ($request) {
+                    $q->where('staff_id', $request->input('assigned_staff'));
+                });
+            }
+
+            if ($request->filled('project_id')) {
+                $query->where('project_id', $request->input('project_id'));
+            }
+
+            if ($request->filled('service_id')) {
+                $query->where('service_id', $request->input('service_id'));
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->input('status'));
+            }
+
+            // Apply sorting
+            $sortBy = $request->input('sort_by', 'created_at');
+            $sortDirection = $request->input('sort_direction', 'desc');
+            $query->orderBy($sortBy, $sortDirection);
+
+            // Paginate results
+            $tasks = $query->with(['creator', 'assignments.staff', 'service', 'project'])
+                        ->paginate(10);
+
+            if ($request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'tasks' => collect($tasks->items())->map(function ($task): array {
+                        return [
+                            'id' => $task->id,
+                            'title' => $task->title,
+                            'description' => $task->description,
+                            'deadline' => $task->deadline,
+                            'status' => $task->status,
+                            'project' => $task->project ? ['id' => $task->project->id, 'name' => $task->project->name] : null,
+                            'service' => $task->service ? ['id' => $task->service->id, 'name' => $task->service->name] : null,
+                            'creator' => $task->creator ? [
+                                'first_name' => $task->creator->first_name,
+                                'middle_name' => $task->creator->middle_name,
+                                'last_name' => $task->creator->last_name
+                            ] : null,
+                            'assignments' => $task->assignments->map(function ($assignment) {
+                                return [
+                                    'staff' => $assignment->staff ? [
+                                        'id' => $assignment->staff->id,
+                                        'first_name' => $assignment->staff->first_name,
+                                        'last_name' => $assignment->staff->last_name
+                                    ] : null
+                                ];
+                            })->toArray()
+                        ];
+                    })->toArray(),
+                    'pagination' => [
+                        'current_page' => $tasks->currentPage(),
+                        'last_page' => $tasks->lastPage(),
+                        'total' => $tasks->total(),
+                        'per_page' => $tasks->perPage()
+                    ]
+                ]);
+            }
+
+            // Non-AJAX response
+            $projects = Project::orderBy('name')->get();
+            $services = Service::orderBy('name')->get();
+            $staffs = Employee::whereNull('resignation')
+                            ->where('status', 1)
+                            ->orderBy('first_name')
+                            ->get();
+            return view('tasks.index', compact('tasks', 'projects', 'services', 'staffs'));
+        } catch (\Exception $e) {
+            Log::error('Error in search method', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error searching tasks: ' . $e->getMessage(),
+            ], 500);
+        }
     }
     public function show($id)
     {
@@ -328,6 +512,4 @@ class TaskController extends Controller
         $task = Task::findOrFail($id);
         return view('tasks.show', compact('task'));
     }
-
-
 }

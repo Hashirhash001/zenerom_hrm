@@ -10,6 +10,8 @@ class ActivityLog extends Model
 
     protected $dates = ['activity_date'];
 
+    public $timestamps = false; // Disable automatic timestamps
+
     public function user()
     {
         return $this->belongsTo(User::class);

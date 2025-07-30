@@ -7,6 +7,8 @@ use Carbon\Carbon;
 use App\Models\Employee;
 
 use App\Models\TaskAssigned;
+use App\Models\Department;
+use App\Models\Role;
 
 use Illuminate\Http\Request;
 use App\Models\StaffAttendance;
@@ -27,7 +29,7 @@ class AttendanceController extends Controller
         $today = Carbon::today('Asia/Kolkata');
 
         // Set default date range based on role
-        if (in_array($user->role_id, [4, 6]) || !in_array($user->role_id, [1, 2, 3, 7, 9])) {
+        if (in_array($user->role_id, [4, 6, 12, 13]) || !in_array($user->role_id, [1, 2, 3, 7, 9])) {
             $start_date = $request->get('start_date', $today->copy()->subDays(6)->toDateString());
             $end_date = $request->get('end_date', $today->toDateString());
         } else {
@@ -41,7 +43,7 @@ class AttendanceController extends Controller
         $statusFilter = $request->get('status');
 
         $query = DB::table('staff_attendance')
-            ->join('employees', 'staff_attendance.user_id', '=', 'employees.id')
+            ->join('employees', 'staff_attendance.user_id', '=', 'employees.user_id')
             ->leftJoin('departments', 'employees.department_id', '=', 'departments.id')
             ->leftJoin('roles', 'employees.role_id', '=', 'roles.id')
             ->select(
@@ -113,6 +115,21 @@ class AttendanceController extends Controller
             return $attendance;
         });
 
+        if ($attendances->isEmpty()) {
+            Log::warning('No attendance records found for user', [
+                'user_id' => $user->id,
+                'role_id' => $user->role_id,
+                'start_date' => $start_date,
+                'end_date' => $end_date,
+                'filters' => [
+                    'name' => $nameFilter,
+                    'role' => $roleFilter,
+                    'department' => $departmentFilter,
+                    'status' => $statusFilter
+                ]
+            ]);
+        }
+
         $roles = DB::table('roles')->select('id', 'name')->get();
         $departments = DB::table('departments')->select('id', 'name')->get();
 
@@ -130,7 +147,7 @@ class AttendanceController extends Controller
         $now = Carbon::now('Asia/Kolkata');
 
         // Set default date range based on role
-        if (in_array($user->role_id, [4, 6]) || !in_array($user->role_id, [1, 2, 3, 7, 9])) {
+        if (in_array($user->role_id, [4, 6, 12, 13]) || !in_array($user->role_id, [1, 2, 3, 7, 9])) {
             $start_date = $request->get('start_date', $today->copy()->subDays(6)->toDateString());
             $end_date = $request->get('end_date', $today->toDateString());
         } else {
@@ -144,7 +161,7 @@ class AttendanceController extends Controller
         $statusFilter = $request->get('status');
 
         $query = DB::table('staff_attendance')
-            ->join('employees', 'staff_attendance.user_id', '=', 'employees.id')
+            ->join('employees', 'staff_attendance.user_id', '=', 'employees.user_id')
             ->leftJoin('departments', 'employees.department_id', '=', 'departments.id')
             ->leftJoin('roles', 'employees.role_id', '=', 'roles.id')
             ->select(
@@ -229,6 +246,21 @@ class AttendanceController extends Controller
             }
             return $attendance;
         });
+
+        if ($attendances->isEmpty()) {
+            Log::warning('No attendance records found for user in fetchAttendances', [
+                'user_id' => $user->id,
+                'role_id' => $user->role_id,
+                'start_date' => $start_date,
+                'end_date' => $end_date,
+                'filters' => [
+                    'name' => $nameFilter,
+                    'role' => $roleFilter,
+                    'department' => $departmentFilter,
+                    'status' => $statusFilter
+                ]
+            ]);
+        }
 
         return response()->json([
             'success' => true,
@@ -376,7 +408,7 @@ class AttendanceController extends Controller
         ]);
 
         // Fetch employee's work schedule
-        $employee = Employee::find($userId);
+        $employee = Employee::where('user_id', $userId)->first();
         $updateData = [
             'total_work_seconds' => $totalWorkSeconds,
             'total_break_seconds' => $totalBreakSeconds,
@@ -407,7 +439,8 @@ class AttendanceController extends Controller
                         $workEnd->addDay();
                     }
 
-                    $requiredWorkSeconds = $workEnd->diffInSeconds($workStart) - 300; // 5-minute buffer
+                    // 1 hour less + 5-minute buffer
+                    $requiredWorkSeconds = $workEnd->diffInSeconds($workStart) - 3600 - 300; // 5-minute buffer
                     $halfDaySeconds = $requiredWorkSeconds / 2;
 
                     $checkInTime = Carbon::parse($attendance->created_at)->setDateFrom(Carbon::today('Asia/Kolkata'));
@@ -777,18 +810,57 @@ class AttendanceController extends Controller
         ]);
 
         $attendance = StaffAttendance::findOrFail($validatedData['attendance_id']);
+        $now = Carbon::now('Asia/Kolkata');
 
-        // Parse the login time; we assume login is stored in created_at.
-        $attendance->created_at = \Carbon\Carbon::parse($validatedData['login']);
+        // Parse login time
+        $attendance->created_at = Carbon::parse($validatedData['login'], 'Asia/Kolkata');
 
-        // Check if logout is provided; if not, leave it as null.
+        // Calculate total break seconds
+        $totalBreakSeconds = (int) DB::table('staff_breaks')
+            ->where('attendance_id', $attendance->id)
+            ->whereNotNull('break_end')
+            ->sum(DB::raw('TIMESTAMPDIFF(SECOND, break_start, break_end)'));
+
+        // Check for active break
+        $activeBreak = DB::table('staff_breaks')
+            ->where('attendance_id', $attendance->id)
+            ->whereNotNull('break_start')
+            ->whereNull('break_end')
+            ->first();
+
+        if ($activeBreak) {
+            $breakSeconds = $now->diffInSeconds(Carbon::parse($activeBreak->break_start, 'Asia/Kolkata'));
+            $totalBreakSeconds += $breakSeconds;
+            DB::table('staff_breaks')
+                ->where('id', $activeBreak->id)
+                ->update([
+                    'break_end' => $now,
+                    'updated_at' => $now
+                ]);
+        }
+
+        // Handle logout and calculate total work seconds
         if (!empty($validatedData['logout'])) {
-            $attendance->logout = \Carbon\Carbon::parse($validatedData['logout']);
+            $attendance->logout = Carbon::parse($validatedData['logout'], 'Asia/Kolkata');
+            $sessionSeconds = $attendance->logout->diffInSeconds($attendance->created_at);
+            $totalWorkSeconds = max(0, $sessionSeconds - $totalBreakSeconds);
+            $attendance->last_timer_start = null;
         } else {
             $attendance->logout = null;
+            $totalWorkSeconds = $attendance->total_work_seconds ?? 0;
+            $isOnBreak = $this->isOnBreak($attendance->id);
+            if (!$isOnBreak) {
+                $sessionSeconds = $now->diffInSeconds($attendance->created_at);
+                $totalWorkSeconds = max(0, $sessionSeconds - $totalBreakSeconds);
+                $attendance->last_timer_start = $now;
+            } else {
+                $attendance->last_timer_start = null;
+            }
         }
 
         $attendance->mode = $validatedData['mode'];
+        $attendance->total_work_seconds = $totalWorkSeconds;
+        $attendance->total_break_seconds = $totalBreakSeconds;
         $attendance->save();
 
         return response()->json([
@@ -796,22 +868,46 @@ class AttendanceController extends Controller
             'created_at' => $attendance->created_at->toDateTimeString(),
             'logout'     => $attendance->logout ? $attendance->logout->toDateTimeString() : '',
             'mode'       => $attendance->mode,
+            'total_work_seconds' => $attendance->total_work_seconds,
+            'total_break_seconds' => $attendance->total_break_seconds,
         ]);
     }
 
     public function todaysReport(Request $request)
     {
+        $user = Auth::user();
+
+        // Restrict access to authorized users (role_id 1, 2, 3, 7)
+        if (!in_array($user->role_id, [1, 2, 3, 7])) {
+            return redirect()->route('home')->with('error', 'Unauthorized access.');
+        }
+
         // Default to today's date if not provided
         $startDate = $request->input('start_date', Carbon::today('Asia/Kolkata')->toDateString());
         $endDate = $request->input('end_date', Carbon::today('Asia/Kolkata')->toDateString());
 
-        // Retrieve all active employees
-        $employees = Employee::whereNull('resignation')
+        // Initialize employee query
+        $employeeQuery = Employee::whereNull('resignation')
             ->where('status', 1)
-            ->get();
+            ->whereNotNull('first_name')
+            ->whereNotNull('last_name')
+            ->whereNotNull('employee_id');
 
-        // Retrieve attendance records within the date range
-        $attendanceQuery = StaffAttendance::whereBetween('attendance_date', [$startDate, $endDate]);
+        // For team leads (role_id = 3), restrict to their department
+        if ($user->role_id === 3) {
+            $departmentId = optional($user->employee)->department_id;
+            if ($departmentId) {
+                $employeeQuery->where('department_id', $departmentId);
+            } else {
+                $employeeQuery->whereRaw('1 = 0'); // No results if no department
+            }
+        }
+
+        $employees = $employeeQuery->get();
+
+        // Retrieve all attendance records within the date range
+        $attendanceQuery = StaffAttendance::whereBetween('attendance_date', [$startDate, $endDate])
+            ->with('user.employee'); // Load user and employee for name display
         if ($request->filled('staff_id')) {
             $attendanceQuery->where('user_id', $request->staff_id);
         }
@@ -830,18 +926,19 @@ class AttendanceController extends Controller
                 $attendance->formatted_work_hours .= ' (Still Working)';
             }
 
-            return $attendance;
-        })->keyBy('user_id');
+            // Add date for grouping
+            $attendance->attendance_date_formatted = Carbon::parse($attendance->attendance_date)->format('d M Y');
 
-        // Retrieve task assignments with related task, project, and service
+            return $attendance;
+        })->groupBy('user_id'); // Group by user_id to allow multiple records
+
+        // Retrieve task assignments within the date range
         $assignedTasks = TaskAssigned::whereBetween('date', [$startDate, $endDate])
             ->with(['task.project', 'task.service'])
             ->get()
-            ->groupBy('staff_id');
+            ->groupBy(['staff_id', 'date']); // Group by staff_id and date
 
-        $today = $startDate; // For header display
-
-        return view('attendance.todays_report', compact('employees', 'attendances', 'today', 'assignedTasks'));
+        return view('attendance.todays_report', compact('employees', 'attendances', 'startDate', 'endDate', 'assignedTasks'));
     }
 
     /**
@@ -926,31 +1023,269 @@ class AttendanceController extends Controller
 
         return view('attendance.work_from_home', compact('records', 'startDate', 'endDate', 'employees', 'staffId'));
     }
+
     public function leaveReport(Request $request)
     {
-        $startDate = $request->input('start_date', \Carbon\Carbon::today('Asia/Kolkata')->toDateString());
-        $endDate   = $request->input('end_date', \Carbon\Carbon::today('Asia/Kolkata')->toDateString());
-        $staffId   = $request->input('staff_id', null);
+        $startDate = $request->input('start_date', Carbon::today('Asia/Kolkata')->toDateString());
+        $endDate = $request->input('end_date', Carbon::today('Asia/Kolkata')->toDateString());
+        $staffId = $request->input('staff_id', null);
+        $departmentId = $request->input('department_id', null);
+        $roleId = $request->input('role_id', null);
 
-        // Retrieve employees who do NOT have an attendance record in the given date range.
-        $query = DB::table('employees')
+        // Ensure valid date range
+        $start = Carbon::parse($startDate, 'Asia/Kolkata')->startOfDay();
+        $end = Carbon::parse($endDate, 'Asia/Kolkata')->endOfDay();
+        if ($start->gt($end)) {
+            [$start, $end] = [$end, $start];
+            $startDate = $start->toDateString();
+            $endDate = $end->toDateString();
+        }
+
+        // Generate dynamic export title
+        $exportTitle = 'Detailed Attendance Report';
+        if ($departmentId) {
+            $department = Department::where('id', $departmentId)->select('name')->first();
+            $exportTitle .= ' - ' . ($department ? $department->name : 'Unknown Department');
+        } else {
+            $exportTitle .= ' - All Departments';
+        }
+        $exportTitle .= ' - ' . Carbon::parse($startDate)->format('d M Y') . ' to ' . Carbon::parse($endDate)->format('d M Y');
+
+        // Get all active employees with non-null user_id
+        $query = Employee::whereNull('resignation')
+            ->where('employees.status', 1)
+            ->whereNotNull('employees.user_id')
             ->leftJoin('departments', 'employees.department_id', '=', 'departments.id')
             ->leftJoin('roles', 'employees.role_id', '=', 'roles.id')
-            ->select('employees.*', 'departments.name as department', 'roles.name as role')
-            ->whereNotExists(function ($q) use ($startDate, $endDate) {
-                $q->select(DB::raw(1))
-                    ->from('staff_attendance')
-                    ->whereRaw('staff_attendance.user_id = employees.id')
-                    ->whereBetween('staff_attendance.attendance_date', [$startDate, $endDate]);
-            });
+            ->select(
+                'employees.id',
+                'employees.user_id',
+                'employees.first_name',
+                'employees.middle_name',
+                'employees.last_name',
+                'employees.employee_id',
+                'employees.email',
+                'employees.saturday_exempt',
+                'employees.created_at',
+                'departments.name as department',
+                'roles.name as role'
+            );
 
         if ($staffId) {
             $query->where('employees.id', $staffId);
         }
+        if ($departmentId) {
+            $query->where('employees.department_id', $departmentId);
+        }
+        if ($roleId) {
+            $query->where('employees.role_id', $roleId);
+        }
 
-        $records = $query->get();
-        $employees = \App\Models\Employee::all();
+        $employees = $query->get();
 
-        return view('attendance.leave_report', compact('records', 'startDate', 'endDate', 'employees', 'staffId'));
+        // Log employees with null user_id for debugging
+        $invalidEmployees = Employee::whereNull('resignation')
+            ->where('employees.status', 1)
+            ->whereNull('employees.user_id')
+            ->get();
+        if ($invalidEmployees->isNotEmpty()) {
+            Log::warning('Employees with null user_id found', [
+                'invalid_employees' => $invalidEmployees->pluck('employee_id')->toArray(),
+                'count' => $invalidEmployees->count()
+            ]);
+        }
+
+        // Get departments and roles for dropdowns (only those with active employees)
+        $departments = Department::whereExists(function ($query) {
+                $query->select(DB::raw(1))
+                      ->from('employees')
+                      ->whereNull('employees.resignation')
+                      ->where('employees.status', 1)
+                      ->whereNotNull('employees.user_id')
+                      ->whereColumn('employees.department_id', 'departments.id');
+            })
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+
+        $roles = Role::whereExists(function ($query) {
+                $query->select(DB::raw(1))
+                      ->from('employees')
+                      ->whereNull('employees.resignation')
+                      ->where('employees.status', 1)
+                      ->whereNotNull('employees.user_id')
+                      ->whereColumn('employees.role_id', 'roles.id');
+            })
+            ->select('id', 'name')
+            ->orderBy('name')
+            ->get();
+
+        // Get attendance records for the date range, with strict validation
+        $attendanceQuery = StaffAttendance::whereBetween('attendance_date', [$startDate, $endDate])
+            ->whereNotNull('user_id')
+            ->whereNotNull('attendance_date')
+            ->whereRaw('user_id REGEXP "^[0-9]+$"')
+            ->select('user_id', 'attendance_date', 'mode');
+
+        // Log all attendance records before grouping
+        $rawAttendances = $attendanceQuery->get();
+        Log::debug('Raw attendance records', [
+            'records' => $rawAttendances->toArray(),
+            'start_date' => $startDate,
+            'end_date' => $endDate
+        ]);
+
+        // Group records manually
+        $attendances = [];
+        foreach ($rawAttendances as $record) {
+            $userId = (string) $record->user_id;
+            $date = $record->attendance_date instanceof Carbon ? $record->attendance_date->toDateString() : (string) $record->attendance_date;
+
+            if (empty($userId) || empty($date)) {
+                Log::warning('Skipping invalid attendance record', [
+                    'record' => $record->toArray(),
+                    'user_id' => $userId,
+                    'attendance_date' => $date
+                ]);
+                continue;
+            }
+
+            if (!isset($attendances[$userId])) {
+                $attendances[$userId] = [];
+            }
+            if (!isset($attendances[$userId][$date])) {
+                $attendances[$userId][$date] = new \Illuminate\Support\Collection();
+            }
+            $attendances[$userId][$date]->push($record);
+        }
+
+        // Log any invalid attendance records
+        $invalidRecords = StaffAttendance::whereBetween('attendance_date', [$startDate, $endDate])
+            ->where(function ($query) {
+                $query->whereNull('user_id')
+                      ->orWhereNull('attendance_date')
+                      ->orWhereRaw('user_id NOT REGEXP "^[0-9]+$"');
+            })
+            ->get();
+        if ($invalidRecords->isNotEmpty()) {
+            Log::warning('Invalid staff_attendance records found', [
+                'invalid_records' => $invalidRecords->toArray(),
+                'start_date' => $startDate,
+                'end_date' => $endDate
+            ]);
+        }
+
+        // Calculate leave, WFH, and Half Day counts
+        $records = $employees->map(function ($employee) use ($start, $end, $attendances) {
+            $userId = (string) $employee->user_id;
+            $leaveCount = 0;
+            $wfhCount = 0;
+            $halfDayCount = 0;
+
+            // Use employee's created_at as the start of their date range
+            $employeeStart = Carbon::parse($employee->created_at, 'Asia/Kolkata')->startOfDay();
+            $rangeStart = $employeeStart->gt($start) ? $employeeStart : $start;
+            $rangeEnd = $end;
+
+            // Generate date range for this employee
+            $dateRange = [];
+            $currentDate = $rangeStart->copy();
+            while ($currentDate->lte($rangeEnd)) {
+                $dateRange[] = $currentDate->toDateString();
+                $currentDate->addDay();
+            }
+
+            foreach ($dateRange as $date) {
+                // Skip Sundays for leave count
+                $carbonDate = Carbon::parse($date);
+                if ($carbonDate->isSunday()) {
+                    continue;
+                }
+
+                // Skip Saturdays for saturday_exempt employees
+                $isSaturdayExempt = $employee->saturday_exempt == 1;
+                if ($isSaturdayExempt && $carbonDate->isSaturday()) {
+                    continue;
+                }
+
+                // Safely check if attendance exists
+                $attendance = null;
+                if (isset($attendances[$userId]) && isset($attendances[$userId][$date])) {
+                    $attendance = $attendances[$userId][$date]->first();
+                }
+
+                // Log for debugging
+                Log::debug('Processing attendance', [
+                    'user_id' => $userId,
+                    'date' => $date,
+                    'is_sunday' => $carbonDate->isSunday(),
+                    'is_saturday_exempt' => $isSaturdayExempt,
+                    'attendance_exists' => !is_null($attendance),
+                    'mode' => $attendance ? $attendance->mode : 'None'
+                ]);
+
+                // Count as leave if no attendance or mode is 'Leave'
+                if (!$attendance || strcasecmp($attendance->mode, 'Leave') === 0) {
+                    $leaveCount++;
+                }
+
+                // Count as WFH if mode is 'Work from home'
+                if ($attendance && strcasecmp($attendance->mode, 'Work from home') === 0) {
+                    $wfhCount++;
+                }
+
+                // Count as Half Day if mode is 'Half Day'
+                if ($attendance && strcasecmp($attendance->mode, 'Half Day') === 0) {
+                    $halfDayCount++;
+                }
+            }
+
+            $record = (object) [
+                'id' => $employee->id,
+                'first_name' => $employee->first_name,
+                'middle_name' => $employee->middle_name,
+                'last_name' => $employee->last_name,
+                'employee_id' => $employee->employee_id,
+                'email' => $employee->email,
+                'department' => $employee->department,
+                'role' => $employee->role,
+                'leave_count' => $leaveCount,
+                'wfh_count' => $wfhCount,
+                'half_day_count' => $halfDayCount,
+            ];
+
+            // Log each employee's record
+            Log::debug('Employee record', [
+                'user_id' => $userId,
+                'employee_id' => $employee->employee_id,
+                'saturday_exempt' => $employee->saturday_exempt,
+                'created_at' => $employee->created_at->toDateString(),
+                'leave_count' => $leaveCount,
+                'wfh_count' => $wfhCount,
+                'half_day_count' => $halfDayCount
+            ]);
+
+            return $record;
+        });
+
+        // Log final records for debugging
+        Log::debug('Leave report records', [
+            'records' => $records->toArray(),
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'staff_id' => $staffId,
+            'department_id' => $departmentId,
+            'role_id' => $roleId
+        ]);
+
+        // Get active employees for staff dropdown
+        $activeEmployees = Employee::whereNull('resignation')
+            ->where('status', 1)
+            ->whereNotNull('user_id')
+            ->select('id', 'first_name', 'middle_name', 'last_name')
+            ->orderBy('first_name')
+            ->get();
+
+        return view('attendance.leave_report', compact('records', 'startDate', 'endDate', 'activeEmployees', 'staffId', 'departmentId', 'roleId', 'departments', 'roles', 'exportTitle'));
     }
 }

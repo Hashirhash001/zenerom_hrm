@@ -4,8 +4,7 @@
 <div class="nk-content">
   <div class="container">
     <h4>
-      Report from {{ \Carbon\Carbon::parse(request('start_date', \Carbon\Carbon::today()))->format('d M Y') }}
-      to {{ \Carbon\Carbon::parse(request('end_date', \Carbon\Carbon::today()))->format('d M Y') }}
+      Report from {{ \Carbon\Carbon::parse($startDate)->format('d M Y') }} to {{ \Carbon\Carbon::parse($endDate)->format('d M Y') }}
     </h4>
     <!-- Filter Form -->
     <form method="GET" action="{{ route('attendance.todays_report') }}" class="row g-3 mb-4">
@@ -26,8 +25,8 @@
         <select name="staff_id" id="staff_id" class="form-control">
           <option value="">All</option>
           @foreach($employees as $employee)
-            <option value="{{ $employee->id }}" {{ request('staff_id') == $employee->id ? 'selected' : '' }}>
-              {{ $employee->first_name }} {{ $employee->middle_name }} {{ $employee->last_name }} ({{ $employee->employee_id }})
+            <option value="{{ $employee->user_id }}" {{ request('staff_id') == $employee->user_id ? 'selected' : '' }}>
+              {{ $employee->first_name }} {{ $employee->middle_name ? $employee->middle_name . ' ' : '' }} {{ $employee->last_name }} ({{ $employee->employee_id }})
             </option>
           @endforeach
         </select>
@@ -44,68 +43,101 @@
         <thead>
           <tr>
             <th>Si.No</th>
+            <th>Date</th>
             <th>Staff Name (Employee ID)</th>
             <th>Mode</th>
             <th>Login Time</th>
             <th>Logout Time</th>
             <th>Work Hours</th>
-            <th>Today's Tasks</th>
+            <th>Tasks</th>
           </tr>
         </thead>
         <tbody>
           @php $serial = 1; @endphp
           @foreach($employees as $employee)
-            @if(!request('staff_id') || request('staff_id') == $employee->id)
-              <tr>
-                <td>{{ $serial++ }}</td>
-                <td>
-                  {{ $employee->first_name }} {{ $employee->middle_name }} {{ $employee->last_name }}
-                  ({{ $employee->employee_id }})
-                </td>
-                <td>
-                  @if(isset($attendances[$employee->id]))
-                    {{ ucfirst($attendances[$employee->id]->mode) }}
-                  @else
+            @if(!request('staff_id') || request('staff_id') == $employee->user_id)
+              @php
+                $attendanceRecords = isset($attendances[$employee->user_id]) ? $attendances[$employee->user_id] : collect([]);
+              @endphp
+              @if($attendanceRecords->isEmpty() && !request('staff_id'))
+                <tr>
+                  <td>{{ $serial++ }}</td>
+                  <td>-</td>
+                  <td>
+                    {{ $employee->first_name }} {{ $employee->middle_name ? $employee->middle_name . ' ' : '' }} {{ $employee->last_name }}
+                    ({{ $employee->employee_id }})
+                  </td>
+                  <td>
+                    @php
+                      \Illuminate\Support\Facades\Log::warning('No attendance record found for employee in todaysReport', [
+                        'employee_id' => $employee->id,
+                        'user_id' => $employee->user_id,
+                        'employee_name' => $employee->first_name . ' ' . ($employee->middle_name ? $employee->middle_name . ' ' : '') . $employee->last_name,
+                        'start_date' => $startDate,
+                        'end_date' => $endDate
+                      ]);
+                    @endphp
                     Leave
-                  @endif
-                </td>
-                <td>
-                  @if(isset($attendances[$employee->id]))
-                    {{ $attendances[$employee->id]->formatted_login_time }}
-                  @else
-                    -
-                  @endif
-                </td>
-                <td>
-                  @if(isset($attendances[$employee->id]))
-                    {{ $attendances[$employee->id]->formatted_logout_time }}
-                  @else
-                    -
-                  @endif
-                </td>
-                <td>
-                  @if(isset($attendances[$employee->id]))
-                    {{ $attendances[$employee->id]->formatted_work_hours }}
-                  @else
-                    -
-                  @endif
-                </td>
-                <td>
-                  @if(isset($assignedTasks[$employee->id]) && $assignedTasks[$employee->id]->count() > 0)
-                    <ul class="mb-0">
-                      @foreach($assignedTasks[$employee->id] as $assignment)
-                        <li>
-                          <strong>{{ optional($assignment->task)->title ?? 'Task' }}</strong>
-                          - {{ optional(optional($assignment->task)->project)->name ?? 'N/A' }}
-                          - {{ optional(optional($assignment->task)->service)->name ?? 'N/A' }}
-                        </li>
-                      @endforeach
-                    </ul>
-                  @else
-                    -
-                  @endif
-                </td>
-              </tr>
+                  </td>
+                  <td>-</td>
+                  <td>-</td>
+                  <td>-</td>
+                  <td>
+                    @php
+                      $tasks = isset($assignedTasks[$employee->user_id]) ? collect($assignedTasks[$employee->user_id])->flatten(1) : collect([]);
+                    @endphp
+                    @if($tasks->isNotEmpty())
+                      <ul class="mb-0">
+                        @foreach($tasks as $assignment)
+                          <li>
+                            <strong>{{ optional($assignment->task)->title ?? 'Task' }}</strong>
+                            - {{ optional(optional($assignment->task)->project)->name ?? 'N/A' }}
+                            - {{ optional(optional($assignment->task)->service)->name ?? 'N/A' }}
+                          </li>
+                        @endforeach
+                      </ul>
+                    @else
+                      -
+                    @endif
+                  </td>
+                </tr>
+              @else
+                @foreach($attendanceRecords as $attendance)
+                  <tr>
+                    <td>{{ $serial++ }}</td>
+                    <td>{{ $attendance->attendance_date_formatted }}</td>
+                    <td>
+                      {{ $employee->first_name }} {{ $employee->middle_name ? $employee->middle_name . ' ' : '' }} {{ $employee->last_name }}
+                      ({{ $employee->employee_id }})
+                    </td>
+                    <td>{{ ucfirst($attendance->mode) }}</td>
+                    <td>{{ $attendance->formatted_login_time }}</td>
+                    <td>{{ $attendance->formatted_logout_time }}</td>
+                    <td>{{ $attendance->formatted_work_hours }}</td>
+                    <td>
+                      @php
+                        $date = $attendance->attendance_date instanceof \Carbon\Carbon
+                          ? $attendance->attendance_date->toDateString()
+                          : $attendance->attendance_date;
+                        $tasks = isset($assignedTasks[$employee->user_id][$date]) ? $assignedTasks[$employee->user_id][$date] : collect([]);
+                      @endphp
+                      @if($tasks->isNotEmpty())
+                        <ul class="mb-0">
+                          @foreach($tasks as $assignment)
+                            <li>
+                              <strong>{{ optional($assignment->task)->title ?? 'Task' }}</strong>
+                              - {{ optional(optional($assignment->task)->project)->name ?? 'N/A' }}
+                              - {{ optional(optional($assignment->task)->service)->name ?? 'N/A' }}
+                            </li>
+                          @endforeach
+                        </ul>
+                      @else
+                        -
+                      @endif
+                    </td>
+                  </tr>
+                @endforeach
+              @endif
             @endif
           @endforeach
         </tbody>

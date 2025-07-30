@@ -249,6 +249,7 @@ Route::middleware(['check.session'])->group(function () {
     Route::get('/my-tasks/today', [MyTaskController::class, 'today'])->name('my_tasks.today');
     Route::post('/my-tasks', [MyTaskController::class, 'store'])->name('my_tasks.store');
     Route::get('/my-tasks/{task}/details', [TaskAssignedController::class, 'detailssub'])->name('my-tasks.details');
+    Route::post('my-tasks/{id}/status', [App\Http\Controllers\MyTaskController::class, 'updateStatus'])->name('my_tasks.update_status');
 
 
 
@@ -264,7 +265,7 @@ Route::middleware(['check.session'])->group(function () {
 
     Route::get('/attendance/work-from-office', [AttendanceController::class, 'workFromOffice'])->name('attendance.workFromOffice');
     Route::get('/attendance/work-from-home', [AttendanceController::class, 'workFromHome'])->name('attendance.workFromHome');
-    Route::get('/attendance/leave-report', [AttendanceController::class, 'leaveReport'])->name('attendance.leaveReport');
+    Route::get('/attendance/attendance-report', [AttendanceController::class, 'leaveReport'])->name('attendance.attendanceReport');
     Route::get('/employee/department', [EmployeeController::class, 'departmentEmployees'])->name('employees.department');
 
 
@@ -279,6 +280,8 @@ Route::middleware(['check.session'])->group(function () {
     Route::get('/leave-requests/{leaveRequest}', [LeaveRequestController::class, 'show'])->name('leave_requests.show');
     Route::post('/leave-requests/{leaveRequest}/approve', [LeaveRequestController::class, 'approve'])->name('leave_requests.approve');
     Route::post('/leave-requests/{leaveRequest}/reject', [LeaveRequestController::class, 'reject'])->name('leave_requests.reject');
+    Route::delete('leave-requests/{leaveRequest}', [LeaveRequestController::class, 'destroy'])->name('leave_requests.destroy');
+    Route::get('employee-list', [LeaveRequestController::class, 'listEmployees'])->name('list.employees');
 });
 
 // Chat (staff chat)

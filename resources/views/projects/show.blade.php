@@ -66,7 +66,7 @@
                                                         </div>
                                                     </li>
                                                     @endforeach
-                                                    
+
                                                 </ul>
                                                     </div><!-- .card-inner -->
                                                 </div>
@@ -201,10 +201,10 @@
         <ul class="timeline-list" id="timelineList-{{ $ps->id }}">
             @foreach($ps->milestones()->orderBy('due_date')->get() as $milestone)
                 <li class="timeline-item" id="milestoneRow-{{ $milestone->id }}">
-                    <div class="timeline-status 
-                        @if($milestone->status=='pending') bg-primary is-outline 
-                        @elseif($milestone->status=='completed') bg-success 
-                        @elseif($milestone->status=='delayed') bg-danger 
+                    <div class="timeline-status
+                        @if($milestone->status=='pending') bg-primary is-outline
+                        @elseif($milestone->status=='completed') bg-success
+                        @elseif($milestone->status=='delayed') bg-danger
                         @endif"></div>
                     <div class="timeline-date">
                         {{ $milestone->due_date ? \Carbon\Carbon::parse($milestone->due_date)->format('d M') : 'No Date' }}
@@ -370,7 +370,7 @@
             <em class="icon ni ni-plus"></em> Add New Update
         </button>
     </div>
-    
+
     <!-- Container for the list of updates -->
     <div id="updateList">
         @foreach($project->updates as $update)
@@ -458,8 +458,8 @@
                                                 </div>
                                             </div>
                                         </div>
-                                                    
-                                                   
+
+
                                                     <!-- <div class="nk-block"><br />
                                                         <div class="card card-bordered">
                                                             <div class="card-inner">
@@ -756,17 +756,17 @@ $(document).on('keyup', '#updateSearch', function() {
 $(document).on('click', '.addDocumentBtn', function() {
     // Get the description id from the clicked button's data attribute.
     var descriptionId = $(this).data('description-id');
-    
+
     // Set the value of the hidden input inside the modal.
     $('#project_description_id').val(descriptionId);
-    
+
     // Show the modal.
     $('#addDocumentModal').modal('show');
 });
 $(document).on('click', '#saveDocumentBtn', function(e) {
     e.preventDefault();
     var formData = new FormData($('#addDocumentForm')[0]);
-    
+
     $.ajax({
         url: "{{ route('project_description_document.store') }}", // Make sure this route name is correct.
         type: "POST",
@@ -780,10 +780,10 @@ $(document).on('click', '#saveDocumentBtn', function(e) {
                 // $('#documentList').append(response.documentHtml);
                 $('#noFilesMsg-' + descriptionId).remove();
                  $('#documentList-' + descriptionId).append(response.documentHtml);
-                
+
                 // Hide the modal window
                 $('#addDocumentModal').modal('hide');
-                
+
                 // Optionally show a success message (you can replace alert with your preferred method)
                 alert(response.message);
                 location.reload()
@@ -806,7 +806,7 @@ $(document).on('click', '.deleteFileBtn', function() {
         alert("File ID not found.");
         return;
     }
-    
+
     if (confirm('Are you sure you want to delete this file?')) {
         var deleteUrl = "{{ route('project_description_file.destroy', ':id') }}";
         deleteUrl = deleteUrl.replace(':id', fileId);
@@ -845,7 +845,7 @@ $(document).on('click', '#saveProjectDescriptionBtn', function(e) {
                 $('#accordionService-' + psId).append(response.descriptionHtml);
                 // Clear form inputs
                 $('#addProjectDescriptionForm')[0].reset();
-                
+
                 // Hide the modal using Bootstrap 5's API
                 var modalEl = document.getElementById('addProjectDescriptionModal');
                 var modalInstance = bootstrap.Modal.getInstance(modalEl);
@@ -853,7 +853,7 @@ $(document).on('click', '#saveProjectDescriptionBtn', function(e) {
                     modalInstance = new bootstrap.Modal(modalEl);
                 }
                 modalInstance.hide();
-                
+
                 showPopup(response.message);
             } else {
                 showPopup("Error saving project description.");
@@ -888,7 +888,7 @@ $(document).on('click', '.editDescriptionBtn', function() {
 $(document).on('click', '#updateProjectDescriptionBtn', function() {
     var formData = new FormData($('#editProjectDescriptionForm')[0]);
     var descriptionId = $('#editProjectDescriptionForm input[name="id"]').val();
-    
+
     $.ajax({
         url: "/project-descriptions/" + descriptionId,
         type: "POST", // using method spoofing (_method=PATCH) in the form
@@ -898,10 +898,10 @@ $(document).on('click', '#updateProjectDescriptionBtn', function() {
         success: function(response) {
             // Replace the updated description block with new HTML (including file list)
             $('#descriptionRow-' + descriptionId).replaceWith(response.descriptionHtml);
-            
+
             // Hide the modal window
             $('#editProjectDescriptionModal').modal('hide');
-            
+
             // Optionally display a notification
             alert(response.message);
         },
@@ -1118,7 +1118,7 @@ $(document).on('click', '#updateMilestoneBtn', function(e) {
     e.preventDefault();
     var formData = new FormData($('#editMilestoneForm')[0]);
     var milestoneId = $('#editMilestoneForm input[name="id"]').val();
-    
+
     $.ajax({
         url: "{{ url('project-milestones') }}/" + milestoneId,
         type: "POST", // using method spoofing via _method: PATCH in the form
@@ -1128,12 +1128,12 @@ $(document).on('click', '#updateMilestoneBtn', function(e) {
         success: function(response) {
             var milestone = response.milestone;
             var serviceId = milestone.project_service_id;
-            
+
             // Build updated HTML for the timeline item (similar to save function)
-            var statusClass = milestone.status === 'pending' ? 'bg-primary is-outline' : 
+            var statusClass = milestone.status === 'pending' ? 'bg-primary is-outline' :
                               milestone.status === 'completed' ? 'bg-success' : 'bg-danger';
             var dueDate = milestone.due_date ? milestone.due_date : 'No Date';
-            
+
             var updatedHtml = `
                 <div class="timeline-status ${statusClass}"></div>
                 <div class="timeline-date">
@@ -1157,10 +1157,10 @@ $(document).on('click', '#updateMilestoneBtn', function(e) {
             `;
             // Replace the HTML inside the corresponding timeline item
             $('#milestoneRow-' + milestoneId).html(updatedHtml);
-            
+
             // Hide the edit modal
             $('#editMilestoneModal').modal('hide');
-            
+
             // Show popup message
             showPopup(response.message);
         },
@@ -1175,7 +1175,7 @@ $(document).on('click', '#updateMilestoneBtn', function(e) {
 $(document).on('click', '#saveMilestoneBtn', function(e) {
     e.preventDefault();
     var formData = new FormData($('#addMilestoneForm')[0]);
-    
+
     $.ajax({
         url: "{{ route('project_milestone.store') }}",  // Ensure this route exists
         type: "POST",
@@ -1186,12 +1186,12 @@ $(document).on('click', '#saveMilestoneBtn', function(e) {
             // Assuming response contains the new milestone object with project_service_id
             var milestone = response.milestone;
             var serviceId = milestone.project_service_id;
-            
+
             // Build HTML for the new timeline item
-            var statusClass = milestone.status === 'pending' ? 'bg-primary is-outline' : 
+            var statusClass = milestone.status === 'pending' ? 'bg-primary is-outline' :
                               milestone.status === 'completed' ? 'bg-success' : 'bg-danger';
             var dueDate = milestone.due_date ? milestone.due_date : 'No Date';
-            
+
             var newTimelineItem = `
                 <li class="timeline-item" id="milestoneRow-${milestone.id}">
                     <div class="timeline-status ${statusClass}"></div>
@@ -1371,7 +1371,7 @@ $(document).on('click', '.deleteProjectServiceBtn', function(e) {
 
 // $(document).ready(function() {
 //     setTimeout(function() {
-//         if (typeof $.fn.summernote !== 'undefined') { 
+//         if (typeof $.fn.summernote !== 'undefined') {
 //             $('#summernote').summernote({
 //                 height: 200,
 //                 placeholder: 'Type here...',

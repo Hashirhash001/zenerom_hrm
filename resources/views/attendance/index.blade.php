@@ -58,8 +58,11 @@
                     </svg>
                 </button>
             </div>
-            <div class="col-md-1 d-flex align-items-end">
-                <a href="{{ route('attendance.todays_report') }}" target="_blank" class="w-full bg-yellow-500 text-white py-1 px-2 rounded-md hover:bg-yellow-600 transition duration-300 ease-in-out transform hover:-translate-y-1 text-center">Report</a>
+            <div class="col-md-2 d-flex align-items-end">
+                <a href="{{ route('attendance.todays_report') }}" target="_blank" class="w-full bg-yellow-500 text-white py-1 px-2 rounded-md hover:bg-yellow-600 transition duration-300 ease-in-out transform hover:-translate-y-1 text-center">Task Report</a>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <a href="{{ route('attendance.attendanceReport') }}" target="_blank" class="w-full bg-yellow-500 text-white py-1 px-2 rounded-md hover:bg-yellow-600 transition duration-300 ease-in-out transform hover:-translate-y-1 text-center">Attendance Report</a>
             </div>
         </div>
     </form>
@@ -213,21 +216,22 @@
                     <div class="modal-body">
                         <input type="hidden" name="attendance_id" id="attendance_id">
                         <div class="mb-3">
-                            <label for="edit_login" class="form-label">Login (Created At)</label>
-                            <input type="text" class="form-control" id="edit_login" name="login">
-                            <small class="form-text text-muted">Format: YYYY-MM-DD HH:MM:SS</small>
+                            <label for="edit_login" class="form-label">Login Time</label>
+                            <input type="datetime-local" class="form-control" id="edit_login" name="login" step="1" required>
+                            <small class="form-text text-muted">Select the date and time of login (includes AM/PM and seconds).</small>
                         </div>
                         <div class="mb-3">
-                            <label for="edit_logout" class="form-label">Logout</label>
-                            <input type="text" class="form-control" id="edit_logout" name="logout">
-                            <small class="form-text text-muted">Format: YYYY-MM-DD HH:MM:SS (leave blank if still working)</small>
+                            <label for="edit_logout" class="form-label">Logout Time</label>
+                            <input type="datetime-local" class="form-control" id="edit_logout" name="logout" step="1">
+                            <small class="form-text text-muted">Select the date and time of logout, including seconds (leave blank if still working).</small>
                         </div>
                         <div class="mb-3">
                             <label for="edit_mode" class="form-label">Mode</label>
-                            <select class="form-control" id="edit_mode" name="mode">
+                            <select class="form-control" id="edit_mode" name="mode" required>
                                 <option value="Work from office">Work from office</option>
                                 <option value="Half Day">Half Day</option>
                                 <option value="Work from Home">Work from Home</option>
+                                <option value="Leave">Leave</option>
                             </select>
                         </div>
                     </div>
@@ -1217,15 +1221,48 @@
                     }
                 });
 
+                // Function to format date for datetime-local input (YYYY-MM-DDTHH:MM)
+                function formatDateForInput(dateStr) {
+                    if (!dateStr) return '';
+                    const date = new Date(dateStr);
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    const seconds = String(date.getSeconds()).padStart(2, '0');
+                    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+                }
+
+                // Function to format date for form submission (YYYY-MM-DD HH:MM:SS)
+                function formatDateForSubmission(dateStr) {
+                    if (!dateStr) return '';
+                    const date = new Date(dateStr);
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const hours = String(date.getHours()).padStart(2, '0');
+                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                    const seconds = String(date.getSeconds()).padStart(2, '0');
+                    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                }
+
                 // Edit Attendance Form Submission
                 $('#editAttendanceForm').on('submit', function(e) {
                     e.preventDefault();
                     console.log('Edit form submitted');
-                    const formData = $(this).serialize();
+                    const formData = new FormData(this);
+                    // Format login and logout for submission
+                    const loginValue = $('#edit_login').val();
+                    const logoutValue = $('#edit_logout').val();
+                    formData.set('login', formatDateForSubmission(loginValue));
+                    formData.set('logout', logoutValue ? formatDateForSubmission(logoutValue) : '');
                     $.ajax({
                         url: '{{ route("attendance.update") }}',
                         method: 'POST',
                         data: formData,
+                        processData: false,
+                        contentType: false,
                         success: function(response) {
                             console.log('Edit AJAX response:', response);
                             const id = response.id;
@@ -1241,6 +1278,9 @@
                                 row.data('total-work-seconds', response.total_work_seconds || 0);
                                 row.data('is-on-break', response.is_on_break || false);
                                 row.data('total-break-seconds', response.total_break_seconds || 0);
+                                row.data('login-time', response.created_at);
+                                row.data('logout-time', response.logout);
+                                row.data('mode', response.mode);
                                 const rowClass = response.is_on_break ? 'bg-yellow-100' : (!response.logout && response.attendance_date === '{{ \Carbon\Carbon::today('Asia/Kolkata')->toDateString() }}' ? 'active-attendance' : '');
                                 row.removeClass('bg-yellow-100 active-attendance').addClass(rowClass);
                                 row.find('td').removeClass('bg-yellow-100 active-attendance').addClass(rowClass);
@@ -1265,6 +1305,10 @@
                                     }
                                 }
                             }
+                            const editModal = bootstrap.Modal.getInstance(document.getElementById('editAttendanceModal'));
+                            if (editModal) {
+                                editModal.hide();
+                            }
                             Swal.fire({
                                 icon: 'success',
                                 title: 'Success',
@@ -1275,10 +1319,6 @@
                                     confirmButton: 'bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700'
                                 }
                             }).then(() => {
-                                const editModal = bootstrap.Modal.getInstance(document.getElementById('editAttendanceModal'));
-                                if (editModal) {
-                                    editModal.hide();
-                                }
                                 updateAttendanceTable();
                             });
                         },
@@ -1321,7 +1361,7 @@
                                 method: 'POST',
                                 data: {
                                     _token: '{{ csrf_token() }}',
-                                    id: id
+                                    attendance_id: id
                                 },
                                 success: function(response) {
                                     console.log('Approve AJAX response:', response);
