@@ -1,6 +1,8 @@
 <?php
 
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Artisan;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\TaskController;
@@ -320,3 +322,29 @@ Route::resource('reports', ReportController::class);
 
 // KPI Metrics (Employee performance)
 Route::resource('kpi-metrics', KpiMetricController::class);
+
+// Add this new route to trigger the daily attendance report command
+Route::get('/test-attendance-report', function () {
+    try {
+        // Run the Artisan command
+        Artisan::call('attendance:send-daily-report', ['format' => 'excel']);
+        $output = Artisan::output();
+
+        // Return a response with the command output
+        return response()->json([
+            'success' => true,
+            'message' => 'Daily attendance report command executed successfully.',
+            'output' => $output
+        ]);
+    } catch (\Exception $e) {
+        // Log the error and return a failure response
+        \Illuminate\Support\Facades\Log::error('Failed to run attendance:send-daily-report via route', [
+            'error' => $e->getMessage(),
+            'user_id' => Auth::id()
+        ]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to run command: ' . $e->getMessage()
+        ], 500);
+    }
+});

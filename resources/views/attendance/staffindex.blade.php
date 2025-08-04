@@ -9,11 +9,11 @@
         <div class="row g-3">
             <div class="col-md-3">
                 <label for="start_date" class="block text-xs font-medium text-gray-700">Start Date</label>
-                <input type="date" name="start_date" id="start_date" value="{{ $start_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1">
+                <input type="date" name="start_date" id="start_date" value="{{ $start_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1" onclick="this.showPicker()">
             </div>
             <div class="col-md-3">
                 <label for="end_date" class="block text-xs font-medium text-gray-700">End Date</label>
-                <input type="date" name="end_date" id="end_date" value="{{ $end_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1">
+                <input type="date" name="end_date" id="end_date" value="{{ $end_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1" onclick="this.showPicker()">
             </div>
             <div class="col-md-3">
                 <label for="name" class="block text-xs font-medium text-gray-700">Staff Name/ID</label>

@@ -33,4 +33,8 @@ return [
         realpath(storage_path('framework/views'))
     ),
 
+    'namespaces' => [
+        'mail' => resource_path('views/vendor/mail'),
+    ],
+
 ];

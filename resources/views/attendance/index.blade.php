@@ -14,11 +14,11 @@
         <div class="row g-3">
             <div class="col-md-3">
                 <label for="start_date" class="block text-xs font-medium text-gray-700">Start Date</label>
-                <input type="date" name="start_date" id="start_date" value="{{ $start_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1">
+                <input type="date" name="start_date" id="start_date" value="{{ $start_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1" onclick="this.showPicker()">
             </div>
             <div class="col-md-3">
                 <label for="end_date" class="block text-xs font-medium text-gray-700">End Date</label>
-                <input type="date" name="end_date" id="end_date" value="{{ $end_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1">
+                <input type="date" name="end_date" id="end_date" value="{{ $end_date }}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-xs p-1" onclick="this.showPicker()">
             </div>
             <div class="col-md-3">
                 <label for="name" class="block text-xs font-medium text-gray-700">Staff Name</label>
@@ -295,20 +295,50 @@
             return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
         }
 
+        // Reminder for long-running sessions
+        function checkLongSession() {
+            if (isTimerRunning && !isOnBreak && totalWorkSeconds > 10 * 3600) { // 10 hours
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Long Session Detected',
+                    text: 'You have been logged in for over 10 hours. Please check out or start a break.',
+                    confirmButtonText: 'Check Out',
+                    cancelButtonText: 'Dismiss',
+                    showCancelButton: true,
+                    customClass: {
+                        popup: 'rounded-lg',
+                        confirmButton: 'bg-blue-600 text-white px-3 py-1.5 rounded-md hover:bg-blue-700',
+                        cancelButton: 'bg-gray-300 text-gray-800 px-3 py-1.5 rounded-md hover:bg-gray-400'
+                    }
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        $('#attendanceBtn').trigger('click');
+                    }
+                });
+            }
+        }
+
         // Function to update timer display and table
         function updateTimer() {
             if (isTimerRunning && !isOnBreak && lastSyncTime) {
                 totalWorkSeconds++;
-                $('#timerDisplay').text(formatTime(totalWorkSeconds)).addClass('animate-pulse').addClass('text-gray-800').removeClass('text-red-500');
+                const isLongSession = totalWorkSeconds > 10 * 3600;
+                $('#timerDisplay')
+                    .text(formatTime(totalWorkSeconds))
+                    .addClass('animate-pulse')
+                    .addClass(isLongSession ? 'text-orange-500' : 'text-gray-800')
+                    .removeClass(isLongSession ? 'text-gray-800' : 'text-orange-500');
                 setTimeout(() => $('#timerDisplay').removeClass('animate-pulse'), 200);
                 const $currentRow = $(`#attendance_${currentUserId}`);
                 if ($currentRow.length) {
                     $currentRow.find('.total-work-hours').text(formatTimeFriendly(totalWorkSeconds));
                     $currentRow.data('total-work-seconds', totalWorkSeconds);
                 }
-                // Sync with server every 30 seconds, but only if not on break
                 if (totalWorkSeconds % 30 === 0 && !isOnBreak) {
                     syncTimerWithServer();
+                }
+                if (totalWorkSeconds % 60 === 0) {
+                    checkLongSession();
                 }
             }
         }
@@ -1452,6 +1482,11 @@
             font-size: 0.875rem;
             font-weight: 500;
             color: #374151;
+        }
+
+        .text-orange-500 {
+            --tw-text-opacity: 1;
+            color: rgb(249 115 22 / var(--tw-text-opacity, 1)) !important;
         }
     </style>
 @endsection

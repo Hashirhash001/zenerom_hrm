@@ -7,9 +7,11 @@ use App\Models\Employee;
 use App\Models\ActivityLog;
 use App\Models\LeaveRequest;
 use Illuminate\Http\Request;
+use App\Mail\LeaveRequestCreated;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 
 class LeaveRequestController extends Controller
 {
@@ -212,6 +214,31 @@ class LeaveRequestController extends Controller
                 'team_lead_status' => 'Submitted',
                 'hr_status' => 'Submitted',
             ]);
+
+            // Get employee details
+            $employee = Employee::where('user_id', Auth::id())->first();
+            $employeeName = $employee ? ($employee->first_name . ($employee->middle_name ? ' ' . $employee->middle_name : '') . ' ' . $employee->last_name . ($employee->employee_id ? ' (' . $employee->employee_id . ')' : '')) : 'Unknown Employee';
+
+            // Get email recipients: HR (role_id 7), Admins (role_id 1), and Team Leads (role_id 3) in the user's department
+            $hrUsers = Employee::where('role_id', 7)->pluck('company_email')->toArray();
+            $adminUsers = Employee::where('role_id', 1)->pluck('company_email')->toArray();
+            $teamLeads = Employee::where('role_id', 3)
+                ->where('department_id', $employee ? $employee->department_id : null)
+                ->pluck('company_email')
+                ->toArray();
+            $recipients = array_unique(array_merge($hrUsers, $adminUsers, $teamLeads));
+
+            // Send email to all recipients
+            if (!empty($recipients)) {
+                try {
+                    Mail::to($recipients)->queue(new LeaveRequestCreated($leaveRequest, $employeeName));
+                    Log::info('Leave Request Email Queued: ID ' . $leaveRequest->id . ', Recipients: ' . implode(', ', $recipients));
+                } catch (\Exception $e) {
+                    Log::error('Leave Request Email Failed: ID ' . $leaveRequest->id . ', Error: ' . $e->getMessage());
+                }
+            } else {
+                Log::warning('No recipients (HR, Admins, or Team Leads) found for leave request email: ID ' . $leaveRequest->id);
+            }
 
             // Log the creation action
             ActivityLog::create([

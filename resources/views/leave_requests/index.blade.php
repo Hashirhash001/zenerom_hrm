@@ -43,12 +43,10 @@
                 <i class="fas fa-filter"></i>
                 <span>Toggle Filters</span>
             </button>
-            @if($isAdminOrAuthorized)
-                <button class="btn btn-primary flex items-center space-x-2" data-bs-toggle="modal" data-bs-target="#addLeaveRequestModal">
-                    <i class="fas fa-plus mr-1"></i>
-                    <span>Add Leave Request</span>
-                </button>
-            @endif
+            <button class="btn btn-primary flex items-center space-x-2" data-bs-toggle="modal" data-bs-target="#addLeaveRequestModal">
+                <i class="fas fa-plus mr-1"></i>
+                <span>Add Leave Request</span>
+            </button>
         </div>
     </div>
 
@@ -339,6 +337,34 @@ $(document).ready(function() {
         popupMessageModal: new bootstrap.Modal(document.getElementById('popupMessageModal'), { backdrop: true })
     };
 
+    // Function to toggle End Date field visibility
+    function toggleEndDateField() {
+        const leaveType = $('#leave_type').val();
+        const $endDateContainer = $('#end_date_container');
+        const $endDateInput = $('#end_date');
+        if (leaveType === 'half_day_first' || leaveType === 'half_day_second') {
+            $endDateContainer.hide();
+            $endDateInput.val('').prop('disabled', true); // Clear and disable to prevent submission
+        } else {
+            $endDateContainer.show();
+            $endDateInput.prop('disabled', false);
+        }
+    }
+
+    // Toggle End Date field on leave_type change
+    $('#leave_type').on('change', toggleEndDateField);
+
+    // Initialize End Date field visibility on modal open
+    $('#addLeaveRequestModal').on('shown.bs.modal', function() {
+        toggleEndDateField();
+    });
+
+    // Clear End Date when form is reset
+    $('#addLeaveRequestForm').on('reset', function() {
+        $('#end_date').val('').prop('disabled', false);
+        $('#end_date_container').show();
+    });
+
     // Function to clear modal backdrops
     function clearModalBackdrops() {
         $('body').removeClass('modal-open');
@@ -473,7 +499,7 @@ $(document).ready(function() {
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 bg-gray-500 uppercase tracking-wider sortable" data-column="user_id">Employee ${currentSortColumn === 'user_id' ? (currentSortDirection === 'asc' ? '↑' : '↓') : ''}</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 bg-gray-500 uppercase tracking-wider sortable" data-column="leave_type">Leave Type ${currentSortColumn === 'leave_type' ? (currentSortDirection === 'asc' ? '↑' : '↓') : ''}</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 bg-gray-500 uppercase tracking-wider sortable" data-column="start_date">Start Date ${currentSortColumn === 'start_date' ? (currentSortDirection === 'asc' ? '↑' : '↓') : ''}</th>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 bg-gray-500 uppercase tracking-wider sortable" data-column="end_date">End Date ${currentSortColumn === 'end_date' ? (currentSortDirection === 'asc' ? '↑' : '') : ''}</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 bg-gray-500 uppercase tracking-wider sortable" data-column="end_date">End Date ${currentSortColumn === 'end_date' ? (currentSortDirection === 'asc' ? '↑' : '↓') : ''}</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 bg-gray-500 uppercase tracking-wider sortable" data-column="duration">Duration ${currentSortColumn === 'duration' ? (currentSortDirection === 'asc' ? '↑' : '↓') : ''}</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 bg-gray-500 uppercase tracking-wider sortable" data-column="team_lead_status">Team Lead Status ${currentSortColumn === 'team_lead_status' ? (currentSortDirection === 'asc' ? '↑' : '↓') : ''}</th>
                             <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 bg-gray-500 uppercase tracking-wider sortable" data-column="hr_status">HR Status ${currentSortColumn === 'hr_status' ? (currentSortDirection === 'asc' ? '↑' : '↓') : ''}</th>

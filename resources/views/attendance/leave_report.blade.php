@@ -43,11 +43,11 @@
         <form method="GET" action="{{ route('attendance.attendanceReport') }}" class="row g-3 mb-4">
             <div class="col-md-3">
                 <label for="start_date" class="form-label">Start Date</label>
-                <input type="date" name="start_date" id="start_date" value="{{ $startDate }}" class="form-control" required>
+                <input type="date" name="start_date" id="start_date" value="{{ $startDate }}" class="form-control" onclick="this.showPicker()" required>
             </div>
             <div class="col-md-3">
                 <label for="end_date" class="form-label">End Date</label>
-                <input type="date" name="end_date" id="end_date" value="{{ $endDate }}" class="form-control" required>
+                <input type="date" name="end_date" id="end_date" value="{{ $endDate }}" class="form-control" onclick="this.showPicker()" required>
             </div>
             <div class="col-md-3">
                 <label for="department_id" class="form-label">Department</label>
