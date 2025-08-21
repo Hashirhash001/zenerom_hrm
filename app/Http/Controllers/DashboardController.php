@@ -36,7 +36,7 @@ class DashboardController extends Controller
             $today = Carbon::today('Asia/Kolkata')->toDateString();
 
             // Global counts
-            $total_employees = DB::table('employees')->count();
+            $total_employees = DB::table('employees')->where('status', 1)->count();
             $total_projects  = DB::table('projects')->count();
             $total_services  = DB::table('services')->count();
             $total_clients   = DB::table('customers')->count();

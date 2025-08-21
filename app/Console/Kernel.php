@@ -10,23 +10,32 @@ class Kernel extends ConsoleKernel
 {
     protected $commands = [
         \App\Console\Commands\AutoCheckout::class,
+        \App\Console\Commands\SendDailyAttendanceReport::class,
+        \App\Console\Commands\ProcessReminders::class
     ];
 
     protected function schedule(Schedule $schedule)
     {
+        // Schedule the auto-checkout command to run daily at 00:03 IST
         $schedule->command('attendance:auto-checkout')
-            ->dailyAt('00:00')
+            ->dailyAt('00:03')
             ->timezone('Asia/Kolkata');
 
-        // Schedule the daily attendance report to run at 00:30 IST, except on Mondays
+        // Schedule the daily attendance report to run at 00:10 IST, except on Mondays
         $schedule->command('attendance:send-daily-report pdf')
-                 ->dailyAt('00:30')
-                 ->timezone('Asia/Kolkata')
-                 ->when(function () {
-                     // Skip if today is Monday (previous day is Sunday, an off day)
-                     return Carbon::now('Asia/Kolkata')->dayOfWeek !== Carbon::MONDAY;
-                 })
-                 ->appendOutputTo(storage_path('logs/cron.log'));
+            ->dailyAt('00:10')
+            ->timezone('Asia/Kolkata')
+            ->when(function () {
+                // Skip if today is Monday (previous day is Sunday, an off day)
+                return Carbon::now('Asia/Kolkata')->dayOfWeek !== Carbon::MONDAY;
+            })
+            ->appendOutputTo(storage_path('logs/cron.log'));
+
+        // Schedule the reminder processing command to run every minute
+        $schedule->command('reminders:process')
+            ->everyMinute()
+            ->timezone('Asia/Kolkata')
+            ->appendOutputTo(storage_path('logs/cron.log'));
     }
 
     protected function commands()

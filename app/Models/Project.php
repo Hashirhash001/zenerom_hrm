@@ -14,7 +14,9 @@ class Project extends Model
         'onboarded_time',
         'payment_status',
         'payment_type',
-        'project_owner_id'
+        'project_owner_id',
+        'location',
+        'report_date',
     ];
     public function customer()
     {

@@ -16,7 +16,7 @@ class AutoCheckout extends Command
 
     public function handle()
     {
-        $today = Carbon::today('Asia/Kolkata')->toDateString();
+        $today = Carbon::yesterday('Asia/Kolkata')->toDateString();
         $now = Carbon::now('Asia/Kolkata');
         $cutoffTime = Carbon::today('Asia/Kolkata')->setTime(23, 59, 59); // Midnight IST
 

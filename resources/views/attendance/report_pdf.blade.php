@@ -37,30 +37,30 @@
         }
 
         .logo-placeholder {
-            font-size: 12pt;
+            font-size: 14pt;
             font-weight: bold;
-            color: #333333;
+            color: #0c0238;
             text-transform: uppercase;
         }
 
         .summary {
             margin: 8px 0;
             padding: 5px;
-            background-color: #e8f0fe;
+            background-color: #0c0238;
             border-radius: 3px;
         }
 
         .summary p {
             margin: 2px 0;
             font-size: 8pt;
-            color: #333333;
+            color: #fff;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
             margin: 0;
-            font-size: 6pt;
+            font-size: 7pt; /* Increased for readability */
             table-layout: fixed;
         }
 
@@ -69,9 +69,8 @@
             padding: 3px 4px;
             text-align: left;
             vertical-align: top;
-            word-wrap: break-word;
-            word-break: break-word;
-            white-space: normal;
+            overflow-wrap: normal; /* Prevent breaking inside words */
+            white-space: normal; /* Allow wrapping at word boundaries */
         }
 
         th {
@@ -98,55 +97,54 @@
             border-top: 0.5px solid #d1d5db;
             padding-top: 5px;
         }
-
-        .status-approved { color: #28a745; }
-        .status-pending { color: #f0ad4e; }
-        .status-rejected { color: #dc3545; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo-placeholder">ZENEROM HRM</div>
+            <div class="logo-placeholder">
+                <img src="{{ asset('images/logo2x.png') }}" width="150" alt="">
+                {{-- <p>ZENEROM HRM</p> --}}
+            </div>
             <h1>Daily Attendance Report - {{ $date }}</h1>
         </div>
 
         <div class="summary">
             <p><strong>Total Employees:</strong> {{ count($reportData) }}</p>
             <p><strong>Present:</strong> {{ count(array_filter($reportData, fn($row) => $row['Login Time'] !== 'Absent')) }}</p>
-            <p><strong>Absent:</strong> {{ count(array_filter($reportData, fn($row) => $row['Login Time'] === 'Absent')) }}</p>
+            <p><strong>Leaves:</strong> {{ array_sum(array_column($reportData, 'Leave Count')) }}</p>
+            <p><strong>WFH:</strong> {{ array_sum(array_column($reportData, 'WFH Count')) }}</p>
+            <p><strong>Half Days:</strong> {{ array_sum(array_column($reportData, 'Half Day Count')) }}</p>
         </div>
 
         <table>
             <thead>
                 <tr>
-                    <th>Employee ID</th>
-                    <th>Name</th>
-                    <th>Department</th>
-                    <th>Role</th>
-                    <th>Login Time</th>
-                    <th>Logout Time</th>
-                    <th>Work Hours</th>
-                    <th>Break Hours</th>
-                    <th>Mode</th>
-                    <th>Tasks</th>
-                    <th>Approval Status</th>
+                    <th style="width: 8%;">ID</th>
+                    <th style="width: 12%;">Name</th>
+                    <th style="width: 10%;">Dept</th>
+                    <th style="width: 8%;">Role</th>
+                    <th style="width: 10%;">Login Time</th>
+                    <th style="width: 10%;">Logout Time</th>
+                    <th style="width: 10%;">Work Hours</th>
+                    <th style="width: 10%;">Break Hours</th>
+                    <th style="width: 10%;">Mode</th>
+                    <th style="width: 22%;">Tasks</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach ($reportData as $row)
                     <tr>
-                        <td>{{ $row['Employee ID'] }}</td>
-                        <td>{{ $row['Name'] }}</td>
-                        <td>{{ $row['Department'] }}</td>
-                        <td>{{ $row['Role'] }}</td>
-                        <td>{{ $row['Login Time'] }}</td>
-                        <td>{{ $row['Logout Time'] }}</td>
-                        <td>{{ $row['Work Hours'] }}</td>
-                        <td>{{ $row['Break Hours'] }}</td>
-                        <td>{{ $row['Mode'] }}</td>
-                        <td>{{ $row['Tasks'] }}</td>
-                        <td class="{{ 'status-' . strtolower($row['Approval Status'] ?? 'pending') }}">{{ $row['Approval Status'] ?? 'Pending' }}</td>
+                        <td style="width: 8%;">{{ $row['Employee ID'] }}</td>
+                        <td style="width: 12%;">{{ $row['Name'] }}</td>
+                        <td style="width: 10%;">{{ $row['Department'] }}</td>
+                        <td style="width: 8%;">{{ $row['Role'] }}</td>
+                        <td style="width: 10%;">{{ $row['Login Time'] }}</td>
+                        <td style="width: 10%;">{{ $row['Logout Time'] }}</td>
+                        <td style="width: 10%;">{{ $row['Work Hours'] }}</td>
+                        <td style="width: 10%;">{{ $row['Break Hours'] }}</td>
+                        <td style="width: 10%;">{{ $row['Mode'] }}</td>
+                        <td style="width: 22%;">{{ $row['Tasks'] }}</td>
                     </tr>
                 @endforeach
             </tbody>

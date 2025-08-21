@@ -5,7 +5,7 @@
 <div class="modal-body">
     <form id="addProjectForm" enctype="multipart/form-data">
         @csrf
-          <div class="mb-3">
+        <div class="mb-3">
             <label for="customer_id" class="form-label">Client</label>
             <select class="form-control" id="customer_id" name="customer_id" required>
                 <option value="">Select Client</option>
@@ -53,14 +53,23 @@
         </div>
         <div class="mb-3">
             <label for="project_owner_id" class="form-label">Project Owner (Assigned Team Head)</label>
-           <select class="form-control" id="project_owner_id" name="project_owner_id" required>
-            <option value="">Select Project Owner</option>
-            @foreach($employees as $employee)
-                <option value="{{ $employee->id }}">
-                    {{ $employee->employee_id }} - {{ $employee->first_name }} {{ $employee->last_name }}
-                </option>
-            @endforeach
-        </select>
+            <select class="form-control" id="project_owner_id" name="project_owner_id" required>
+                <option value="">Select Project Owner</option>
+                @foreach($employees as $employee)
+                    <option value="{{ $employee->id }}">
+                        {{ $employee->employee_id }} - {{ $employee->first_name }} {{ $employee->last_name }}
+                    </option>
+                @endforeach
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="location" class="form-label">Project Location</label>
+            <select class="form-control" id="location" name="location" required>
+                <option value="">Select Location</option>
+                <option value="UAE">UAE</option>
+                <option value="India">India</option>
+                <option value="UK">UK</option>
+            </select>
         </div>
         <button type="button" class="btn btn-primary" id="saveProjectBtn">Save Project</button>
     </form>

@@ -104,16 +104,28 @@
                                 </div>
                                 <div class="dropdown-body">
                                     <div class="nk-notification">
+                                        @php
+                                            $notifications = \App\Models\Notification::where('user_id', Auth::id())
+                                                ->whereNull('read_at')
+                                                ->orderBy('created_at', 'desc')
+                                                ->take(10)
+                                                ->get();
+                                        @endphp
                                         @if ($notifications->count())
                                             @foreach ($notifications as $notification)
                                                 <div class="nk-notification-item dropdown-inner">
                                                     <div class="nk-notification-icon">
-                                                        <em
-                                                            class="icon icon-circle bg-warning-dim ni ni-curve-down-right"></em>
+                                                        <em class="icon icon-circle bg-warning-dim ni {{ $notification->type == 'reminder' ? 'ni-alarm-alt' : 'ni-curve-down-right' }}"></em>
                                                     </div>
                                                     <div class="nk-notification-content">
                                                         <div class="nk-notification-text">
-                                                            {{ $notification->title }}: {{ $notification->message }}
+                                                            <strong>{{ $notification->title }}</strong>: {{ $notification->message }}
+                                                            @if ($notification->project)
+                                                                <br><small>Project: {{ $notification->project->name }}</small>
+                                                                @if ($notification->service)
+                                                                    <small> | Service: {{ $notification->service->name }}</small>
+                                                                @endif
+                                                            @endif
                                                         </div>
                                                         <div class="nk-notification-time">
                                                             {{ $notification->created_at->diffForHumans() }}
@@ -128,10 +140,11 @@
                                                 </div>
                                             </div>
                                         @endif
-                                    </div><!-- .nk-notification -->
-                                </div><!-- .nk-dropdown-body -->
+                                    </div>
+                                </div>
                                 <div class="dropdown-foot center">
-                                    <a href="{{ route('notifications.all') }}">View All</a>
+                                    <a href="{{ route('notifications.all') }}">View All Notifications</a> |
+                                    <a href="{{ route('reminders.index') }}">Manage Reminders</a>
                                 </div>
                             </div>
                         </li>

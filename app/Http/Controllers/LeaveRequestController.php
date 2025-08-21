@@ -198,7 +198,7 @@ class LeaveRequestController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'leave_type' => 'required|in:Sick,Maternity,Unpaid,Paid,half_day_first,half_day_second',
+            'leave_type' => 'required|in:Sick,Maternity,Unpaid,Paid,half_day_first,half_day_second,WFH',
             'start_date' => 'required|date|after_or_equal:today',
             'end_date' => 'required|date|after_or_equal:start_date',
             'reason' => 'nullable|string|max:1000',
@@ -227,6 +227,11 @@ class LeaveRequestController extends Controller
                 ->pluck('company_email')
                 ->toArray();
             $recipients = array_unique(array_merge($hrUsers, $adminUsers, $teamLeads));
+
+            $additionalEmail = 'hrm.zenerom@gmail.com';
+            if (!in_array($additionalEmail, $recipients)) {
+                $recipients[] = $additionalEmail;
+            }
 
             // Send email to all recipients
             if (!empty($recipients)) {

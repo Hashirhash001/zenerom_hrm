@@ -20,9 +20,9 @@ class SendDailyAttendanceReport extends Command
 
     public function handle()
     {
-        $reportDate = Carbon::yesterday('Asia/Kolkata')->toDateString(); // e.g., 2025-08-01
-        $reportDateFormatted = Carbon::yesterday('Asia/Kolkata')->format('d M Y'); // e.g., 01 Aug 2025
-        $reportDateEnd = Carbon::yesterday('Asia/Kolkata')->endOfDay(); // e.g., 2025-08-01 23:59:59
+        $reportDate = Carbon::yesterday('Asia/Kolkata')->toDateString(); // e.g., 2025-08-07
+        $reportDateFormatted = Carbon::yesterday('Asia/Kolkata')->format('d M Y'); // e.g., 07 Aug 2025
+        $reportDateEnd = Carbon::yesterday('Asia/Kolkata')->endOfDay(); // e.g., 2025-08-07 23:59:59
         $format = $this->argument('format');
 
         if (!in_array($format, ['excel', 'pdf'])) {
@@ -31,11 +31,17 @@ class SendDailyAttendanceReport extends Command
         }
 
         // Fetch employees with role_id 1 (Admin) and 7 (HR)
-        $recipients = Employee::whereIn('role_id', [1, 7])
+        $recipients = Employee::whereIn('role_id', [1])
             ->whereNotNull('company_email')
             ->where('status', 1)
             ->pluck('company_email')
             ->toArray();
+
+        // Add hrm.zenerom@gmail.com to recipients, ensuring no duplicates
+        $additionalEmail = 'hrm.zenerom@gmail.com';
+        if (!in_array($additionalEmail, $recipients)) {
+            $recipients[] = $additionalEmail;
+        }
 
         if (empty($recipients)) {
             Log::warning('No recipients found for daily attendance report', [
@@ -46,20 +52,48 @@ class SendDailyAttendanceReport extends Command
             return 0;
         }
 
-        // Fetch employees
+        // Fetch employees with necessary fields
         $employees = Employee::whereNull('resignation')
-            ->where('status', 1)
-            ->whereNotNull('first_name')
-            ->whereNotNull('last_name')
-            ->whereNotNull('employee_id')
+            ->where('employees.status', 1)
+            ->whereNotNull('employees.first_name')
+            ->whereNotNull('employees.last_name')
+            ->whereNotNull('employees.employee_id')
+            ->whereNotNull('employees.user_id')
+            ->leftJoin('departments', 'employees.department_id', '=', 'departments.id')
+            ->leftJoin('roles', 'employees.role_id', '=', 'roles.id')
+            ->select(
+                'employees.id',
+                'employees.user_id',
+                'employees.first_name',
+                'employees.middle_name',
+                'employees.last_name',
+                'employees.employee_id',
+                'employees.saturday_exempt',
+                'departments.name as department',
+                'roles.name as role'
+            )
             ->get();
+
+        // Log employees with null user_id for debugging
+        $invalidEmployees = Employee::whereNull('resignation')
+            ->where('employees.status', 1)
+            ->whereNull('user_id')
+            ->get();
+        if ($invalidEmployees->isNotEmpty()) {
+            Log::warning('Employees with null user_id found', [
+                'invalid_employees' => $invalidEmployees->pluck('employee_id')->toArray(),
+                'count' => $invalidEmployees->count()
+            ]);
+        }
 
         // Fetch attendance records for the previous day
         $attendances = StaffAttendance::where('attendance_date', $reportDate)
-            ->with('user.employee')
+            ->whereNotNull('user_id')
+            ->whereRaw('user_id REGEXP "^[0-9]+$"')
+            ->select('id', 'user_id', 'attendance_date', 'mode', 'created_at', 'logout', 'total_work_seconds', 'last_timer_start')
             ->get();
 
-        // Log attendance data for debugging
+        // Log attendance data
         Log::info('Attendance records fetched', [
             'date' => $reportDate,
             'count' => $attendances->count(),
@@ -67,8 +101,8 @@ class SendDailyAttendanceReport extends Command
             'attendance_dates' => $attendances->pluck('attendance_date')->toArray()
         ]);
 
-        $attendances = $attendances->map(function ($attendance) use ($reportDateEnd) {
-            // Format login and logout times in AM/PM
+        // Group and process attendances
+        $attendances = $attendances->map(function ($attendance) use ($reportDate, $reportDateEnd) {
             $attendance->formatted_login_time = Carbon::parse($attendance->created_at)->format('h:i:s A');
             $attendance->formatted_logout_time = $attendance->logout ? Carbon::parse($attendance->logout)->format('h:i:s A') : 'Still Working';
 
@@ -76,7 +110,7 @@ class SendDailyAttendanceReport extends Command
             $totalWorkSeconds = $attendance->total_work_seconds ?? 0;
             if (!$attendance->logout && $attendance->last_timer_start && !$this->isOnBreak($attendance->id)) {
                 $lastTimerStart = Carbon::parse($attendance->last_timer_start);
-                $totalWorkSeconds += $lastTimerStart->diffInSeconds($reportDateEnd); // Use end of previous day
+                $totalWorkSeconds += $lastTimerStart->diffInSeconds($reportDateEnd);
             }
             $attendance->formatted_work_hours = $totalWorkSeconds > 0 ? $this->formatHours($totalWorkSeconds) : '-';
             if (!$attendance->logout && $totalWorkSeconds > 0) {
@@ -84,13 +118,48 @@ class SendDailyAttendanceReport extends Command
             }
 
             // Calculate break hours
-            $attendance->total_break_seconds = (int) DB::table('staff_breaks')
+            $breaks = DB::table('staff_breaks')
                 ->where('attendance_id', $attendance->id)
                 ->whereNotNull('break_end')
-                ->sum(DB::raw('TIMESTAMPDIFF(SECOND, break_start, break_end)'));
+                ->select('break_start', 'break_end')
+                ->get();
+
+            // Log raw breaks for debugging
+            Log::debug('Raw breaks for attendance', [
+                'attendance_id' => $attendance->id,
+                'user_id' => $attendance->user_id,
+                'date' => $reportDate,
+                'breaks' => $breaks->toArray()
+            ]);
+
+            $totalBreakSeconds = 0;
+            $breakDetails = [];
+            foreach ($breaks as $break) {
+                $start = Carbon::parse($break->break_start, 'Asia/Kolkata');
+                $end = Carbon::parse($break->break_end, 'Asia/Kolkata');
+                $seconds = $start->diffInSeconds($end);
+                $totalBreakSeconds += $seconds;
+                $breakDetails[] = [
+                    'start' => $start->toDateTimeString(),
+                    'end' => $end->toDateTimeString(),
+                    'seconds' => $seconds,
+                    'formatted' => $this->formatHours($seconds)
+                ];
+            }
+
+            $attendance->total_break_seconds = (int) $totalBreakSeconds;
             $attendance->formatted_break_hours = $this->formatHours($attendance->total_break_seconds);
 
-            // Format attendance date
+            // Log break details
+            Log::debug('Break hours calculation', [
+                'attendance_id' => $attendance->id,
+                'user_id' => $attendance->user_id,
+                'date' => $reportDate,
+                'total_break_seconds' => $attendance->total_break_seconds,
+                'formatted_break_hours' => $attendance->formatted_break_hours,
+                'breaks' => $breakDetails
+            ]);
+
             $attendance->attendance_date_formatted = Carbon::parse($attendance->attendance_date)->format('d M Y');
 
             return $attendance;
@@ -107,7 +176,7 @@ class SendDailyAttendanceReport extends Command
             $userId = (string) $employee->user_id;
             $attendance = isset($attendances[$userId]) ? $attendances[$userId]->first() : null;
 
-            // Log user_id mismatch for debugging
+            // Log user_id mismatch
             if (!$attendance && $attendances->isNotEmpty()) {
                 Log::warning('No attendance record found for user', [
                     'user_id' => $userId,
@@ -119,20 +188,54 @@ class SendDailyAttendanceReport extends Command
                 return $task->task->title . ' (' . ($task->task->project ? $task->task->project->name : 'No Project') . ')';
             })->implode(', ') : 'No Tasks';
 
+            // Calculate leave, WFH, and half day counts for the previous day
+            $leaveCount = 0;
+            $wfhCount = 0;
+            $halfDayCount = 0;
+            $carbonDate = Carbon::parse($reportDate, 'Asia/Kolkata');
+
+            // Skip Sundays and Saturdays for saturday_exempt employees
+            if (!$carbonDate->isSunday() && !($employee->saturday_exempt && $carbonDate->isSaturday())) {
+                if (!$attendance || strcasecmp($attendance->mode, 'Leave') === 0) {
+                    $leaveCount = 1;
+                }
+                if ($attendance && strcasecmp($attendance->mode, 'Work from home') === 0) {
+                    $wfhCount = 1;
+                }
+                if ($attendance && strcasecmp($attendance->mode, 'Half Day') === 0) {
+                    $halfDayCount = 1;
+                }
+            }
+
+            // Log counts for debugging
+            Log::debug('Employee attendance counts', [
+                'user_id' => $userId,
+                'employee_id' => $employee->employee_id,
+                'date' => $reportDate,
+                'is_sunday' => $carbonDate->isSunday(),
+                'is_saturday_exempt' => $employee->saturday_exempt,
+                'attendance_exists' => !is_null($attendance),
+                'mode' => $attendance ? $attendance->mode : 'None',
+                'leave_count' => $leaveCount,
+                'wfh_count' => $wfhCount,
+                'half_day_count' => $halfDayCount
+            ]);
+
             return [
                 'Attendance Date' => $attendance ? $attendance->attendance_date_formatted : $reportDateFormatted,
                 'Employee ID' => $employee->employee_id,
                 'Name' => trim($employee->first_name . ' ' . $employee->middle_name . ' ' . $employee->last_name),
-                'Department' => $employee->department ? $employee->department->name : 'N/A',
-                'Role' => $employee->role ? $employee->role->name : 'N/A',
+                'Department' => $employee->department ?: 'N/A',
+                'Role' => $employee->role ?: 'N/A',
                 'Login Time' => $attendance ? $attendance->formatted_login_time : 'Absent',
                 'Logout Time' => $attendance ? $attendance->formatted_logout_time : 'Absent',
                 'Work Hours' => $attendance ? $attendance->formatted_work_hours : '-',
                 'Break Hours' => $attendance ? $attendance->formatted_break_hours : '-',
                 'Mode' => $attendance ? ($attendance->mode ?? 'Unknown') : 'Leave',
                 'Tasks' => $tasks,
-                'Approval Status' => $attendance ? ($attendance->approval_status ?? 'Pending') : 'Pending',
-                'Notes' => $attendance ? ($attendance->notes ?? '-') : '-'
+                'Leave Count' => $leaveCount,
+                'WFH Count' => $wfhCount,
+                'Half Day Count' => $halfDayCount
             ];
         })->toArray();
 
@@ -174,14 +277,13 @@ class SendDailyAttendanceReport extends Command
                 if (!class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
                     throw new \Exception('PDF Facade class not found. Ensure barryvdh/laravel-dompdf is installed and configured.');
                 }
-                // Clear font cache before generating PDF
+                // Clear font cache
                 $fontCacheDir = storage_path('fonts/');
                 if (is_dir($fontCacheDir)) {
                     foreach (glob($fontCacheDir . '*.ufm') as $file) {
                         @unlink($file);
                     }
                 }
-                // Set dompdf options
                 Pdf::setOptions([
                     'default_font' => 'Helvetica',
                     'defaultPaperSize' => 'a4',
@@ -221,20 +323,19 @@ class SendDailyAttendanceReport extends Command
                         ]);
             });
 
-            Log::info('Daily attendance report sent', [
+            Log::info('Daily attendance report sent via email', [
                 'date' => $reportDate,
                 'format' => $format,
                 'recipients' => $recipients,
                 'file' => $fileName
             ]);
-            $this->info('Daily attendance report sent successfully.');
         } catch (\Exception $e) {
-            Log::error('Failed to send daily attendance report', [
+            Log::error('Failed to send daily attendance report via email', [
                 'date' => $reportDate,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            $this->error('Failed to send report: ' . $e->getMessage());
+            $this->error('Failed to send email report: ' . $e->getMessage());
             return 1;
         }
 
@@ -257,6 +358,7 @@ class SendDailyAttendanceReport extends Command
     {
         return DB::table('staff_breaks')
             ->where('attendance_id', $attendanceId)
+            ->whereNotNull('break_start')
             ->whereNull('break_end')
             ->exists();
     }

@@ -16,7 +16,7 @@
                         </div>
                         <div class="nk-block-head-content">
                             <div class="toggle-wrap nk-block-tools-toggle">
-                                <a href="#" class="btn btn-icon btn-trigger toggle-expand me-n1" data-target="pageMenu">
+                                <a href="javascript:void(0)" class="btn btn-icon btn-trigger toggle-expand me-n1" data-target="pageMenu">
                                     <em class="icon ni ni-menu-alt-r"></em>
                                 </a>
                                 <div class="toggle-expand-content" data-content="pageMenu">
@@ -27,12 +27,12 @@
                                             </div>
                                         </li>
                                         <li class="nk-block-tools-opt d-none d-sm-block">
-                                            <a href="#" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProjectModal">
+                                            <a href="javascript:void(0)" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProjectModal">
                                                 <em class="icon ni ni-plus"></em><span>Add Project</span>
                                             </a>
                                         </li>
                                         <li class="nk-block-tools-opt d-block d-sm-none">
-                                            <a href="#" class="btn btn-icon btn-primary" data-bs-toggle="modal" data-bs-target="#addProjectModal">
+                                            <a href="javascript:void(0)" class="btn btn-icon btn-primary" data-bs-toggle="modal" data-bs-target="#addProjectModal">
                                                 <em class="icon ni ni-plus"></em>
                                             </a>
                                         </li>
@@ -112,13 +112,14 @@
         });
     }
 
-    // Load Edit Project form via Ajax
     function editProject(id) {
         $.ajax({
             url: "{{ url('projects') }}/" + id + "/edit",
             type: "GET",
             success: function(response) {
                 $('#editProjectModal .modal-content').html(response);
+                // Initialize datetime-local input if needed
+                $('#edit_onboarded_time').val($('#edit_onboarded_time').val() || '');
                 $('#editProjectModal').modal('show');
             },
             error: function(xhr) {
@@ -134,7 +135,7 @@
         var projectId = $('#editProjectForm input[name="id"]').val();
         $.ajax({
             url: "{{ url('projects') }}/" + projectId,
-            type: "POST",
+            type: "POST", // Using method spoofing (_method=PATCH)
             data: formData,
             contentType: false,
             processData: false,
@@ -145,7 +146,11 @@
             },
             error: function(xhr) {
                 console.log("Update Project Error:", xhr.responseText);
-                showPopup("Error updating project.");
+                let message = "Error updating project.";
+                if (xhr.responseJSON && xhr.responseJSON.errors) {
+                    message = Object.values(xhr.responseJSON.errors).join('<br>');
+                }
+                showPopup(message);
             }
         });
     }

@@ -9,6 +9,7 @@
             <label for="leave_type">Leave Type</label>
             <select class="form-control" name="leave_type" id="leave_type" required>
                 <option value="">Select Leave Type</option>
+                <option value="WFH">WFH</option>
                 <option value="Unpaid">Unpaid Leave</option>
                 <option value="Paid">Paid Leave</option>
                 <option value="half_day_first">Half day Leave(first half)</option>

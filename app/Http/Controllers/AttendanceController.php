@@ -4,13 +4,14 @@ namespace App\Http\Controllers;
 
 use Carbon\Carbon;
 
-use App\Models\Employee;
-
-use App\Models\TaskAssigned;
-use App\Models\Department;
 use App\Models\Role;
 
+use App\Models\Employee;
+use App\Models\Department;
+use App\Models\TaskAssigned;
+
 use Illuminate\Http\Request;
+use App\Models\PublicHoliday;
 use App\Models\StaffAttendance;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1067,6 +1068,7 @@ class AttendanceController extends Controller
                 'employees.email',
                 'employees.saturday_exempt',
                 'employees.created_at',
+                'employees.role_id', // Added to access role_id for holiday checks
                 'departments.name as department',
                 'roles.name as role'
             );
@@ -1119,6 +1121,31 @@ class AttendanceController extends Controller
             ->select('id', 'name')
             ->orderBy('name')
             ->get();
+
+        // Get public holidays within the date range
+        $holidays = PublicHoliday::where('year', '>=', $start->year)
+            ->where('year', '<=', $end->year)
+            ->get()
+            ->flatMap(function ($holiday) {
+                return collect($holiday->dates)->map(function ($date) use ($holiday) {
+                    return [
+                        'date' => Carbon::parse($date)->toDateString(),
+                        'role_ids' => $holiday->role_ids,
+                        'name' => $holiday->name,
+                    ];
+                });
+            })
+            ->filter(function ($holiday) use ($startDate, $endDate) {
+                return Carbon::parse($holiday['date'])->between($startDate, $endDate);
+            })
+            ->groupBy('date');
+
+        // Log holidays for debugging
+        Log::debug('Public holidays in date range', [
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'holidays' => $holidays->toArray(),
+        ]);
 
         // Get attendance records for the date range, with strict validation
         $attendanceQuery = StaffAttendance::whereBetween('attendance_date', [$startDate, $endDate])
@@ -1176,7 +1203,7 @@ class AttendanceController extends Controller
         }
 
         // Calculate leave, WFH, and Half Day counts
-        $records = $employees->map(function ($employee) use ($start, $end, $attendances) {
+        $records = $employees->map(function ($employee) use ($start, $end, $attendances, $holidays) {
             $userId = (string) $employee->user_id;
             $leaveCount = 0;
             $wfhCount = 0;
@@ -1196,15 +1223,47 @@ class AttendanceController extends Controller
             }
 
             foreach ($dateRange as $date) {
-                // Skip Sundays for leave count
                 $carbonDate = Carbon::parse($date);
+
+                // Skip Sundays for leave count
                 if ($carbonDate->isSunday()) {
+                    Log::debug('Skipping Sunday for leave count', [
+                        'user_id' => $userId,
+                        'date' => $date,
+                    ]);
                     continue;
                 }
 
                 // Skip Saturdays for saturday_exempt employees
                 $isSaturdayExempt = $employee->saturday_exempt == 1;
                 if ($isSaturdayExempt && $carbonDate->isSaturday()) {
+                    Log::debug('Skipping Saturday for exempt employee', [
+                        'user_id' => $userId,
+                        'date' => $date,
+                        'saturday_exempt' => $isSaturdayExempt,
+                    ]);
+                    continue;
+                }
+
+                // Skip public holidays for this employee's role
+                $isHoliday = false;
+                if (isset($holidays[$date])) {
+                    foreach ($holidays[$date] as $holiday) {
+                        $roleIds = is_array($holiday['role_ids']) ? $holiday['role_ids'] : json_decode($holiday['role_ids'], true) ?? [];
+                        if (in_array($employee->role_id, $roleIds)) {
+                            $isHoliday = true;
+                            Log::debug('Skipping public holiday for employee', [
+                                'user_id' => $userId,
+                                'date' => $date,
+                                'holiday_name' => $holiday['name'],
+                                'employee_role_id' => $employee->role_id,
+                                'holiday_role_ids' => $roleIds,
+                            ]);
+                            break;
+                        }
+                    }
+                }
+                if ($isHoliday) {
                     continue;
                 }
 
@@ -1220,8 +1279,9 @@ class AttendanceController extends Controller
                     'date' => $date,
                     'is_sunday' => $carbonDate->isSunday(),
                     'is_saturday_exempt' => $isSaturdayExempt,
+                    'is_holiday' => $isHoliday,
                     'attendance_exists' => !is_null($attendance),
-                    'mode' => $attendance ? $attendance->mode : 'None'
+                    'mode' => $attendance ? $attendance->mode : 'None',
                 ]);
 
                 // Count as leave if no attendance or mode is 'Leave'
@@ -1262,7 +1322,7 @@ class AttendanceController extends Controller
                 'created_at' => $employee->created_at->toDateString(),
                 'leave_count' => $leaveCount,
                 'wfh_count' => $wfhCount,
-                'half_day_count' => $halfDayCount
+                'half_day_count' => $halfDayCount,
             ]);
 
             return $record;
@@ -1275,7 +1335,7 @@ class AttendanceController extends Controller
             'end_date' => $endDate,
             'staff_id' => $staffId,
             'department_id' => $departmentId,
-            'role_id' => $roleId
+            'role_id' => $roleId,
         ]);
 
         // Get active employees for staff dropdown

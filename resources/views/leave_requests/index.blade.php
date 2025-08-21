@@ -422,8 +422,14 @@ $(document).ready(function() {
                 if (response.success && Array.isArray(response.employees)) {
                     let options = '<option value="">All</option>';
                     response.employees.forEach(employee => {
+                        // Construct full name from first_name, middle_name, and last_name
+                        let fullName = employee.first_name;
+                        if (employee.middle_name) {
+                            fullName += ' ' + employee.middle_name;
+                        }
+                        fullName += ' ' + employee.last_name;
                         options += `<option value="${employee.id}" ${employee.id == $('#user_id').val() ? 'selected' : ''}>
-                            ${employee.name} ${employee.employee_id ? '(' + employee.employee_id + ')' : ''}
+                            ${fullName} ${employee.employee_id ? '(' + employee.employee_id + ')' : ''}
                         </option>`;
                     });
                     $('#user_id').html(options);

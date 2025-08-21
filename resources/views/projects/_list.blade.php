@@ -10,7 +10,7 @@
                         <div class="nk-tb-col"><span style="font-weight:bold;color: #455aba;">Status</span></div>
                         <div class="nk-tb-col"><span style="font-weight:bold;color: #455aba;">Payment Status</span></div>
                         <div class="nk-tb-col"><span style="font-weight:bold;color: #455aba;">Created At</span></div>
-                        
+
                     </div>
                     @foreach($projects as $project)
                     <div class="nk-tb-item">
@@ -26,10 +26,10 @@
                         <div class="nk-tb-col">
                             <span class="tb-amount">
                                 {{ $project->customer ? $project->customer->name : 'Unknown Client' }}
-                                
+
                             </span>
                         </div>
-                     
+
                         <!-- Assigned Staff (Project Owner) -->
                         <div class="nk-tb-col">
                             <span>
@@ -57,7 +57,7 @@
                             <ul class="nk-tb-actions gx-1">
                                 <li>
                                     <div class="drodown">
-                                        <a href="#" class="dropdown-toggle btn btn-icon btn-trigger" data-bs-toggle="dropdown">
+                                        <a href="javascript:void(0)" class="dropdown-toggle btn btn-icon btn-trigger" data-bs-toggle="dropdown">
                                             <em class="icon ni ni-more-h"></em>
                                         </a>
                                         <div class="dropdown-menu dropdown-menu-end">
@@ -70,13 +70,13 @@
                                                 </li>
 
                                                 <li>
-                                                    <a href="#" class="editProjectBtn" data-id="{{ $project->id }}">
+                                                    <a href="javascript:void(0)" class="editProjectBtn" data-id="{{ $project->id }}">
                                                         <em class="icon ni ni-edit"></em>
                                                         <span>Edit</span>
                                                     </a>
                                                 </li>
                                                 <li>
-                                                    <a href="#" class="deleteProjectBtn" data-id="{{ $project->id }}">
+                                                    <a href="javascript:void(0)" class="deleteProjectBtn" data-id="{{ $project->id }}">
                                                         <em class="icon ni ni-trash"></em>
                                                         <span>Delete</span>
                                                     </a>

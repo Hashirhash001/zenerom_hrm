@@ -36,7 +36,7 @@
         </div>
         <div class="mb-3">
             <label for="edit_onboarded_time" class="form-label">Onboarded Time</label>
-            <input type="datetime-local" class="form-control" id="edit_onboarded_time" name="onboarded_time" value="{{ date('Y-m-d\TH:i', strtotime($project->onboarded_time)) }}">
+            <input type="datetime-local" class="form-control" id="edit_onboarded_time" name="onboarded_time" value="{{ $project->onboarded_time ? \Carbon\Carbon::parse($project->onboarded_time)->format('Y-m-d\TH:i') : '' }}">
         </div>
         <div class="mb-3">
             <label for="edit_payment_status" class="form-label">Payment Status</label>
@@ -54,9 +54,29 @@
             </select>
         </div>
         <div class="mb-3">
-            <label for="edit_project_owner_id" class="form-label">Project Owner (User ID)</label>
-            <input type="number" class="form-control" id="edit_project_owner_id" name="project_owner_id" value="{{ $project->project_owner_id }}" required>
+            <label for="edit_project_owner_id" class="form-label">Project Owner (Assigned Team Head)</label>
+            <select class="form-control" id="edit_project_owner_id" name="project_owner_id" required>
+                <option value="">Select Project Owner</option>
+                @foreach($employees as $employee)
+                    <option value="{{ $employee->id }}" {{ $project->project_owner_id == $employee->id ? 'selected' : '' }}>
+                        {{ $employee->employee_id }} - {{ $employee->first_name }} {{ $employee->last_name }}
+                    </option>
+                @endforeach
+            </select>
         </div>
+        <div class="mb-3">
+            <label for="edit_location" class="form-label">Project Location</label>
+            <select class="form-control" id="edit_location" name="location" required>
+                <option value="">Select Location</option>
+                <option value="UAE" {{ $project->location == 'UAE' ? 'selected' : '' }}>UAE</option>
+                <option value="India" {{ $project->location == 'India' ? 'selected' : '' }}>India</option>
+                <option value="UK" {{ $project->location == 'UK' ? 'selected' : '' }}>UK</option>
+            </select>
+        </div>
+        {{-- <div class="mb-3">
+            <label for="edit_report_date" class="form-label">Report Date</label>
+            <input type="date" class="form-control" id="edit_report_date" name="report_date" value="{{ $project->report_date ? \Carbon\Carbon::parse($project->report_date)->format('Y-m-d') : '' }}" onclick="this.showPicker()">
+        </div> --}}
         <button type="button" class="btn btn-primary" id="updateProjectBtn">Update Project</button>
     </form>
 </div>

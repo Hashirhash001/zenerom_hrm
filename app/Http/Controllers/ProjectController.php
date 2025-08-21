@@ -2,15 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use Carbon\Carbon;
 use App\Models\Project;
-use App\Models\Customer;  // assuming you want to show customer info
-use App\Models\ProjectMilestone;
-use App\Models\ProjectDocument;
-use App\Models\ProjectStatusHistory;
+use App\Models\Employee;
 use App\Models\Department;
-use Illuminate\Support\Facades\Auth;
-
 use Illuminate\Http\Request;
+use App\Models\ProjectDocument;
+use App\Models\ProjectMilestone;
+
+use App\Models\ProjectStatusHistory;
+use Illuminate\Support\Facades\Auth;
+use App\Models\Customer;  // assuming you want to show customer info
 
 class ProjectController extends Controller
 {
@@ -89,17 +91,21 @@ class ProjectController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'customer_id'      => 'required|integer|exists:customers,id',
-            'name'             => 'required|string|max:255',
-            'requirements'     => 'nullable|string',
-            'status'           => 'required|in:active,completed,delayed,canceled,hold',
-            'onboarded_time'   => 'nullable|date',
-            'payment_status'   => 'required|in:paid,unpaid,pending',
-            'payment_type'     => 'required|in:monthly,one_time',
+            'customer_id' => 'required|integer|exists:customers,id',
+            'name' => 'required|string|max:255',
+            'requirements' => 'nullable|string',
+            'status' => 'required|in:active,completed,delayed,canceled,hold',
+            'onboarded_time' => 'nullable|date_format:Y-m-d\TH:i',
+            'payment_status' => 'required|in:paid,unpaid,pending',
+            'payment_type' => 'required|in:monthly,one_time',
             'project_owner_id' => 'required|integer|exists:employees,id',
-
-
+            'location' => 'required|in:UAE,India,UK',
         ]);
+
+        // Format onboarded_time to MySQL DATETIME or set to null
+        $validated['onboarded_time'] = $request->input('onboarded_time')
+            ? Carbon::createFromFormat('Y-m-d\TH:i', $request->input('onboarded_time'))->format('Y-m-d H:i:s')
+            : null;
 
         $project = Project::create($validated);
 
@@ -110,70 +116,49 @@ class ProjectController extends Controller
         ]);
     }
 
+    public function show(Project $project)
+    {
+        $project->load([
+            'customer',
+            'owner',
+            'milestones',
+            'documents',
+            'statusHistory',
+            'projectServices',
+            'projectDescriptions',
+            'customer.contacts',
+            'tasks.service',
+            'tasks.assignments.staff'
+        ]);
+
+        $customers = \App\Models\Customer::all();
+        $departments = \App\Models\Department::all();
+        $employees = \App\Models\Employee::all();
+        $services = \App\Models\Service::all();
+
+        $projectDescription = $project->projectDescriptions()->first();
+
+        return view('projects.show', compact('project', 'projectDescription', 'customers', 'departments', 'employees', 'services'));
+    }
     /**
-     * Display the specified project.
-     */
-    // public function show(Project $project)
-    // {
-    //     $project->load(['customer', 'owner', 'milestones', 'documents', 'statusHistory', 'projectServices', 'customer.contacts']);
-    //     $customers = \App\Models\Customer::all();
-    //     $departments = \App\Models\Department::all();
-    //     $employees = \App\Models\Employee::all();
-    //     $projectDescription = $project->projectDescription()->first();
-    //     $services = \App\Models\Service::all();
-
-    //     return view('projects.show', compact('project', 'projectDescription','customers', 'departments', 'employees', 'services'));
-    // }
-public function show(Project $project)
-{
-    $project->load([
-        'customer',
-        'owner',
-        'milestones',
-        'documents',
-        'statusHistory',
-        'projectServices',
-        'projectDescriptions',
-        'customer.contacts',
-        'tasks.service',
-        'tasks.assignments.staff'
-    ]);
-
-    $customers = \App\Models\Customer::all();
-    $departments = \App\Models\Department::all();
-    $employees = \App\Models\Employee::all();
-    $services = \App\Models\Service::all();
-
-    $projectDescription = $project->projectDescriptions()->first();
-
-    return view('projects.show', compact('project', 'projectDescription', 'customers', 'departments', 'employees', 'services'));
-}
-/**
      * Display projects that have at least one service from the logged-in user's department.
      */
-public function departmentProjects(Request $request)
-{
-    $user = Auth::user();
-    $departmentId = optional($user->employee)->department_id;
+    public function departmentProjects(Request $request)
+    {
+        $user = Auth::user();
+        $departmentId = optional($user->employee)->department_id;
 
-    // Retrieve projects that have at least one service from the user's department.
-    // Eager load 'client' and 'assignedStaff' (the employee corresponding to project_owner_id).
-    $projects = \App\Models\Project::whereHas('services', function ($query) use ($departmentId) {
+        // Retrieve projects that have at least one service from the user's department.
+        // Eager load 'client' and 'assignedStaff' (the employee corresponding to project_owner_id).
+        $projects = \App\Models\Project::whereHas('services', function ($query) use ($departmentId) {
             $query->where('department_id', $departmentId);
         })
-        ->with(['client', 'assignedStaff'])
-        ->orderBy('created_at', 'desc')
-        ->get();
+            ->with(['client', 'assignedStaff'])
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-    return view('projects.department_projects', compact('projects'));
-}
-
-
-
-
-
-
-
+        return view('projects.department_projects', compact('projects'));
+    }
 
     /**
      * Show the form for editing the specified project.
@@ -182,7 +167,8 @@ public function departmentProjects(Request $request)
     {
         $customers = Customer::all();
         $departments = Department::all();
-        return view('projects.edit_modal', compact('project', 'customers', 'departments'));
+        $employees = Employee::all(); // Fetch employees for the project owner dropdown
+        return view('projects.edit_modal', compact('project', 'customers', 'departments', 'employees'));
     }
 
     /**
@@ -191,15 +177,21 @@ public function departmentProjects(Request $request)
     public function update(Request $request, Project $project)
     {
         $validated = $request->validate([
-            'customer_id'      => 'required|integer|exists:customers,id',
-            'name'             => 'required|string|max:255',
-            'requirements'     => 'nullable|string',
-            'status'           => 'required|in:active,completed,delayed,canceled,hold',
-            'onboarded_time'   => 'nullable|date',
-            'payment_status'   => 'required|in:paid,unpaid,pending',
-            'payment_type'     => 'required|in:monthly,one_time',
-            'project_owner_id' => 'required|integer|exists:users,id',
+            'customer_id' => 'required|integer|exists:customers,id',
+            'name' => 'required|string|max:255',
+            'requirements' => 'nullable|string',
+            'status' => 'required|in:active,completed,delayed,canceled,hold',
+            'onboarded_time' => 'nullable|date_format:Y-m-d\TH:i', // Validate specific format
+            'payment_status' => 'required|in:paid,unpaid,pending',
+            'payment_type' => 'required|in:monthly,one_time',
+            'project_owner_id' => 'required|integer|exists:employees,id',
+            'location' => 'required|in:UAE,India,UK',
         ]);
+
+        // Format onboarded_time to MySQL DATETIME or set to null
+        $validated['onboarded_time'] = $request->input('onboarded_time')
+            ? Carbon::createFromFormat('Y-m-d\TH:i', $request->input('onboarded_time'))->format('Y-m-d H:i:s')
+            : null;
 
         $project->update($validated);
 
@@ -209,7 +201,6 @@ public function departmentProjects(Request $request)
             'project' => $project
         ]);
     }
-
     /**
      * Remove the specified project.
      */

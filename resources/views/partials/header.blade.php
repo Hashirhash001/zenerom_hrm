@@ -88,6 +88,15 @@
                             <span class="nk-menu-text">Projects</span>
                         </a>
                         <ul class="nk-menu-sub">
+                            {{-- Reminders (menu_item id: 28) --}}
+                            @if (session('user_privileges')->has(28) && session('user_privileges')->get(28)->can_view)
+                                <li class="nk-menu-item">
+                                    <a href="{{ route('reminders.index') }}" class="nk-menu-link">
+                                        {{-- <em class="icon ni ni-alarm-alt"></em> --}}
+                                        <span class="nk-menu-text">Reminders</span>
+                                    </a>
+                                </li>
+                            @endif
                             {{-- Clients (menu_item id: 11) --}}
                             @if (session('user_privileges')->has(11) && session('user_privileges')->get(11)->can_view)
                                 <li class="nk-menu-item">
@@ -172,15 +181,25 @@
                     </li>
                 @endif
 
-                {{-- Calendar (menu_item id: 5) --}}
+                {{-- Calendar (menu_item id: 27) --}}
                 @if (session()->has('user_privileges') &&
-                        session('user_privileges')->has(5) &&
-                        session('user_privileges')->get(5)->can_view)
-                    <li class="nk-menu-item">
-                        <a href="javascript:void(0)" class="nk-menu-link">
+                        session('user_privileges')->has(27) &&
+                        session('user_privileges')->get(27)->can_view)
+                    <li class="nk-menu-item has-sub">
+                        <a href="javascript:void(0)" class="nk-menu-link nk-menu-toggle">
                             <span class="nk-menu-icon"><em class="icon ni ni-calendar-booking"></em></span>
                             <span class="nk-menu-text">Calendar</span>
                         </a>
+                        <ul class="nk-menu-sub">
+                            {{-- Income (menu_item id: 27) --}}
+                            @if (session('user_privileges')->has(27) && session('user_privileges')->get(27)->can_view)
+                                <li class="nk-menu-item">
+                                    <a href="{{ route('public-holidays.index') }}" class="nk-menu-link">
+                                        <span class="nk-menu-text">Public Holidays</span>
+                                    </a>
+                                </li>
+                            @endif
+                        </ul>
                     </li>
                 @endif
 

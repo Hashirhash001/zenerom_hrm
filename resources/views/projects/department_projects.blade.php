@@ -5,7 +5,7 @@
 
 <div class="container">
     <h4 class="mb-4">Projects in Your Department</h4>
-    
+
     @if($projects->count())
     <div class="table-responsive">
         <table class="table table-bordered datatable-init-export" data-export-title="Department Projects">
@@ -24,7 +24,7 @@
                     <td>{{ $project->name }}</td>
                     <td>{{ optional($project->customer)->name ?? 'N/A' }}</td>
                     <td>
-                        {{ optional($project->assignedStaff)->first_name }} {{ optional($project->assignedStaff)->last_name }} 
+                        {{ optional($project->assignedStaff)->first_name }} {{ optional($project->assignedStaff)->last_name }}
                         ({{ optional($project->assignedStaff)->employee_id }})
                     </td>
                     <td>{{ ucfirst($project->status) }}</td>

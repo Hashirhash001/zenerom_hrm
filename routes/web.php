@@ -17,6 +17,7 @@ use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\SettingController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\ReminderController;
 use App\Http\Controllers\TeamTaskController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\KpiMetricController;
@@ -32,6 +33,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\TaskAssignedController;
 use App\Http\Controllers\CalendarEventController;
 use App\Http\Controllers\ProjectUpdateController;
+use App\Http\Controllers\PublicHolidayController;
 use App\Http\Controllers\ResetPasswordController;
 use App\Http\Controllers\ProjectServiceController;
 use App\Http\Controllers\CustomerContactController;
@@ -284,6 +286,21 @@ Route::middleware(['check.session'])->group(function () {
     Route::post('/leave-requests/{leaveRequest}/reject', [LeaveRequestController::class, 'reject'])->name('leave_requests.reject');
     Route::delete('leave-requests/{leaveRequest}', [LeaveRequestController::class, 'destroy'])->name('leave_requests.destroy');
     Route::get('employee-list', [LeaveRequestController::class, 'listEmployees'])->name('list.employees');
+
+    // Reminders
+    Route::get('reminders/upcoming', [ReminderController::class, 'upcoming'])->name('reminders.upcoming');
+    Route::patch('reminders/{reminder}/status', [ReminderController::class, 'updateStatus'])->name('reminders.updateStatus');
+    Route::resource('reminders', ReminderController::class);
+
+    //public holidays
+    Route::prefix('public-holidays')->middleware(['auth'])->group(function () {
+        Route::get('/', [PublicHolidayController::class, 'index'])->name('public-holidays.index');
+        Route::get('/{publicHoliday}/edit', [PublicHolidayController::class, 'edit'])->name('public-holidays.edit');
+        Route::post('/', [PublicHolidayController::class, 'store'])->name('public-holidays.store');
+        Route::patch('/{publicHoliday}', [PublicHolidayController::class, 'update'])->name('public-holidays.update');
+        Route::delete('/{publicHoliday}', [PublicHolidayController::class, 'destroy'])->name('public-holidays.destroy');
+        Route::get('/{id}', [PublicHolidayController::class, 'show'])->name('public-holidays.show');
+    });
 });
 
 // Chat (staff chat)
