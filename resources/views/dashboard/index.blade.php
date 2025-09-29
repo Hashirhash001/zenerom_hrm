@@ -10,7 +10,7 @@
                         <div class="nk-block-head-content">
                             <h3 class="nk-block-title page-title">Admin Dashboard</h3>
                             <div class="nk-block-des text-soft">
-                                <p>Welcome, {{ $uname }} (ID: {{ $uid }})</p>
+                                {{-- <p>Welcome, {{ $uname }} (ID: {{ $uid }})</p> --}}
                             </div>
                         </div>
                         <div class="nk-block-head-content">
@@ -255,8 +255,8 @@ $(document).ready(function() {
             const statusChecked = reminder.status === 'completed' ? 'checked' : '';
             const todayBadge = reminder.is_today ? '<span class="text-xs font-semibold px-2 py-1 rounded-full bg-blue-500 text-white ml-2">Today</span>' : '';
 
-            // Show checkbox only for today's tasks (including overdue tasks shown today)
-            const checkboxHtml = reminder.is_today ? `
+            // Show checkbox for overdue or today's not completed tasks in this_week
+            const checkboxHtml = (containerId === 'thisWeekReminders' && (reminder.is_overdue || (reminder.is_today && reminder.status === 'not_completed'))) ? `
                 <label class="relative inline-flex items-center cursor-pointer">
                     <input type="checkbox" class="sr-only status-toggle" data-id="${reminder.id}" data-date="${reminder.date}" ${statusChecked}>
                     <div class="w-10 h-5 bg-gray-200 rounded-full shadow-inner"></div>

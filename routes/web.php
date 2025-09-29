@@ -271,6 +271,8 @@ Route::middleware(['check.session'])->group(function () {
     Route::get('/attendance/work-from-home', [AttendanceController::class, 'workFromHome'])->name('attendance.workFromHome');
     Route::get('/attendance/attendance-report', [AttendanceController::class, 'leaveReport'])->name('attendance.attendanceReport');
     Route::get('/employee/department', [EmployeeController::class, 'departmentEmployees'])->name('employees.department');
+    Route::get('/attendance/employee-details/{employeeId}', [AttendanceController::class, 'getEmployeeAttendanceDetails'])
+    ->name('attendance.employeeDetails');
 
 
     Route::get('/my-tasks/report', [MyTaskController::class, 'report'])->name('my_tasks.report');

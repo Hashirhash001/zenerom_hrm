@@ -1052,10 +1052,11 @@ class AttendanceController extends Controller
         }
         $exportTitle .= ' - ' . Carbon::parse($startDate)->format('d M Y') . ' to ' . Carbon::parse($endDate)->format('d M Y');
 
-        // Get all active employees with non-null user_id
+        // Get all active employees with non-null user_id, excluding IDs 18 and 36
         $query = Employee::whereNull('resignation')
             ->where('employees.status', 1)
             ->whereNotNull('employees.user_id')
+            ->whereNotIn('employees.id', [18, 36]) // Exclude employee IDs 18 and 36
             ->leftJoin('departments', 'employees.department_id', '=', 'departments.id')
             ->leftJoin('roles', 'employees.role_id', '=', 'roles.id')
             ->select(
@@ -1089,6 +1090,7 @@ class AttendanceController extends Controller
         $invalidEmployees = Employee::whereNull('resignation')
             ->where('employees.status', 1)
             ->whereNull('employees.user_id')
+            ->whereNotIn('employees.id', [18, 36]) // Apply exclusion here as well
             ->get();
         if ($invalidEmployees->isNotEmpty()) {
             Log::warning('Employees with null user_id found', [
@@ -1097,13 +1099,14 @@ class AttendanceController extends Controller
             ]);
         }
 
-        // Get departments and roles for dropdowns (only those with active employees)
+        // Get departments and roles for dropdowns (only those with active employees, excluding IDs 18 and 36)
         $departments = Department::whereExists(function ($query) {
                 $query->select(DB::raw(1))
                       ->from('employees')
                       ->whereNull('employees.resignation')
                       ->where('employees.status', 1)
                       ->whereNotNull('employees.user_id')
+                      ->whereNotIn('employees.id', [18, 36]) // Exclude employee IDs 18 and 36
                       ->whereColumn('employees.department_id', 'departments.id');
             })
             ->select('id', 'name')
@@ -1116,6 +1119,7 @@ class AttendanceController extends Controller
                       ->whereNull('employees.resignation')
                       ->where('employees.status', 1)
                       ->whereNotNull('employees.user_id')
+                      ->whereNotIn('employees.id', [18, 36]) // Exclude employee IDs 18 and 36
                       ->whereColumn('employees.role_id', 'roles.id');
             })
             ->select('id', 'name')
@@ -1338,14 +1342,250 @@ class AttendanceController extends Controller
             'role_id' => $roleId,
         ]);
 
-        // Get active employees for staff dropdown
+        // Get active employees for staff dropdown, excluding IDs 18 and 36
         $activeEmployees = Employee::whereNull('resignation')
             ->where('status', 1)
             ->whereNotNull('user_id')
+            ->whereNotIn('id', [18, 36]) // Exclude employee IDs 18 and 36
             ->select('id', 'first_name', 'middle_name', 'last_name')
             ->orderBy('first_name')
             ->get();
 
         return view('attendance.leave_report', compact('records', 'startDate', 'endDate', 'activeEmployees', 'staffId', 'departmentId', 'roleId', 'departments', 'roles', 'exportTitle'));
+    }
+
+    public function getEmployeeAttendanceDetails(Request $request, $employeeId)
+    {
+        $startDate = $request->input('start_date');
+        $endDate = $request->input('end_date');
+        
+        // Get employee information
+        $employee = Employee::with(['department', 'role'])
+            ->where('id', $employeeId)
+            ->first();
+        
+        if (!$employee) {
+            return response()->json(['error' => 'Employee not found'], 404);
+        }
+        
+        // Get employee's work schedule and format to AM/PM
+        $workStartTime = $employee->work_start_time ?? '09:00:00';
+        $workEndTime = $employee->work_end_time ?? '18:00:00';
+        
+        // Format work schedule times to AM/PM
+        $formattedStartTime = $this->formatTimeToAMPM($workStartTime);
+        $formattedEndTime = $this->formatTimeToAMPM($workEndTime);
+        $formattedSchedule = $formattedStartTime . ' - ' . $formattedEndTime;
+        
+        $standardWorkHours = 8; // Standard work hours per day
+        
+        // Get detailed attendance records
+        $attendanceRecords = DB::table('staff_attendance')
+            ->where('user_id', $employee->user_id)
+            ->whereBetween('attendance_date', [$startDate, $endDate])
+            ->orderBy('attendance_date', 'desc')
+            ->get();
+        
+        // Get public holidays in the date range
+        $holidays = PublicHoliday::where('year', '>=', Carbon::parse($startDate)->year)
+            ->where('year', '<=', Carbon::parse($endDate)->year)
+            ->get()
+            ->flatMap(function ($holiday) {
+                return collect($holiday->dates)->map(function ($date) use ($holiday) {
+                    return [
+                        'date' => Carbon::parse($date)->toDateString(),
+                        'role_ids' => $holiday->role_ids,
+                        'name' => $holiday->name,
+                    ];
+                });
+            })
+            ->filter(function ($holiday) use ($startDate, $endDate) {
+                return Carbon::parse($holiday['date'])->between($startDate, $endDate);
+            })
+            ->groupBy('date');
+        
+        // Process each attendance record
+        $detailedRecords = [];
+        $currentDate = Carbon::parse($startDate);
+        $endDateCarbon = Carbon::parse($endDate);
+        
+        while ($currentDate <= $endDateCarbon) {
+            $dateString = $currentDate->toDateString();
+            
+            // Skip Sundays
+            if ($currentDate->isSunday()) {
+                $currentDate->addDay();
+                continue;
+            }
+            
+            // Skip Saturdays for exempt employees
+            if ($employee->saturday_exempt == 1 && $currentDate->isSaturday()) {
+                $currentDate->addDay();
+                continue;
+            }
+            
+            // Check if it's a holiday for this employee's role
+            $isHoliday = false;
+            if (isset($holidays[$dateString])) {
+                foreach ($holidays[$dateString] as $holiday) {
+                    $roleIds = is_array($holiday['role_ids']) ? $holiday['role_ids'] : json_decode($holiday['role_ids'], true) ?? [];
+                    if (in_array($employee->role_id, $roleIds)) {
+                        $isHoliday = true;
+                        break;
+                    }
+                }
+            }
+            
+            if ($isHoliday) {
+                $currentDate->addDay();
+                continue;
+            }
+            
+            // Find attendance record for this date
+            $attendance = $attendanceRecords->where('attendance_date', $dateString)->first();
+            
+            if ($attendance) {
+                // Calculate work timing indicators
+                $loginTime = Carbon::parse($attendance->created_at);
+                $logoutTime = $attendance->logout ? Carbon::parse($attendance->logout) : null;
+                
+                $expectedStartTime = Carbon::parse($dateString . ' ' . $workStartTime);
+                $expectedEndTime = Carbon::parse($dateString . ' ' . $workEndTime);
+                
+                // Calculate late entry (more than 15 minutes late)
+                $lateEntry = $loginTime->gt($expectedStartTime->copy()->addMinutes(15));
+                $lateMinutes = $lateEntry ? $loginTime->diffInMinutes($expectedStartTime) : 0;
+                
+                // Calculate early exit (more than 15 minutes early)
+                $earlyExit = false;
+                $earlyMinutes = 0;
+                if ($logoutTime && $logoutTime->lt($expectedEndTime->copy()->subMinutes(15))) {
+                    $earlyExit = true;
+                    $earlyMinutes = $expectedEndTime->diffInMinutes($logoutTime);
+                }
+                
+                // Calculate total work time and overtime
+                $totalWorkSeconds = $attendance->total_work_seconds ?? 0;
+                if (!$logoutTime && $attendance->last_timer_start) {
+                    $totalWorkSeconds += Carbon::now('Asia/Kolkata')->diffInSeconds(Carbon::parse($attendance->last_timer_start));
+                }
+                
+                $totalWorkHours = $totalWorkSeconds / 3600;
+                $overtimeHours = max(0, $totalWorkHours - $standardWorkHours);
+                
+                // Get break details
+                $breaks = DB::table('staff_breaks')
+                    ->where('attendance_id', $attendance->id)
+                    ->whereNotNull('break_end')
+                    ->select('break_start', 'break_end')
+                    ->get();
+                
+                $totalBreakMinutes = 0;
+                foreach ($breaks as $break) {
+                    $totalBreakMinutes += Carbon::parse($break->break_start)->diffInMinutes(Carbon::parse($break->break_end));
+                }
+                
+                $detailedRecords[] = [
+                    'date' => $currentDate->format('d M Y'),
+                    'day' => $currentDate->format('l'),
+                    'login_time' => $loginTime->format('h:i A'), // AM/PM format
+                    'logout_time' => $logoutTime ? $logoutTime->format('h:i A') : 'Still Working', // AM/PM format
+                    'mode' => $attendance->mode ?? 'Present',
+                    'total_work_hours' => $this->formatHours($totalWorkSeconds),
+                    'total_break_time' => $this->formatDuration($totalBreakMinutes * 60),
+                    'breaks_count' => count($breaks),
+                    'late_entry' => $lateEntry,
+                    'late_minutes' => $lateMinutes,
+                    'early_exit' => $earlyExit,
+                    'early_minutes' => $earlyMinutes,
+                    'overtime_hours' => $overtimeHours > 0.1 ? number_format($overtimeHours, 2) : 0,
+                    'status_class' => $this->getStatusClass($attendance->mode ?? 'Present', $lateEntry, $earlyExit, $overtimeHours),
+                    'raw_date' => $dateString
+                ];
+            } else {
+                // No attendance record - marked as absent/leave
+                $detailedRecords[] = [
+                    'date' => $currentDate->format('d M Y'),
+                    'day' => $currentDate->format('l'),
+                    'login_time' => '-',
+                    'logout_time' => '-',
+                    'mode' => 'Absent',
+                    'total_work_hours' => '-',
+                    'total_break_time' => '-',
+                    'breaks_count' => 0,
+                    'late_entry' => false,
+                    'late_minutes' => 0,
+                    'early_exit' => false,
+                    'early_minutes' => 0,
+                    'overtime_hours' => 0,
+                    'status_class' => 'status-absent',
+                    'raw_date' => $dateString
+                ];
+            }
+            
+            $currentDate->addDay();
+        }
+        
+        return response()->json([
+            'employee' => [
+                'name' => $employee->first_name . ' ' . ($employee->middle_name ? $employee->middle_name . ' ' : '') . $employee->last_name,
+                'employee_id' => $employee->employee_id,
+                'department' => $employee->department->name ?? 'N/A',
+                'role' => $employee->role->name ?? 'N/A',
+                'work_schedule' => $formattedSchedule // Use formatted schedule
+            ],
+            'records' => $detailedRecords,
+            'summary' => [
+                'total_days' => count($detailedRecords),
+                'present_days' => count(array_filter($detailedRecords, function($record) {
+                    return $record['mode'] !== 'Absent';
+                })),
+                'late_entries' => count(array_filter($detailedRecords, function($record) {
+                    return $record['late_entry'];
+                })),
+                'early_exits' => count(array_filter($detailedRecords, function($record) {
+                    return $record['early_exit'];
+                })),
+                'total_overtime_hours' => array_sum(array_column($detailedRecords, 'overtime_hours'))
+            ]
+        ]);
+    }
+    
+    // Add this helper method to your AttendanceController
+    private function formatTimeToAMPM($time) {
+        if (!$time || $time === '00:00:00') {
+            return '';
+        }
+        
+        try {
+            return \Carbon\Carbon::createFromFormat('H:i:s', $time)->format('h:i A');
+        } catch (\Exception $e) {
+            return $time; // Return original if parsing fails
+        }
+    }
+    
+    private function getStatusClass($mode, $lateEntry, $earlyExit, $overtimeHours)
+    {
+        switch (strtolower($mode)) {
+            case 'leave':
+                return 'status-leave';
+            case 'half day':
+                return 'status-half-day';
+            case 'work from home':
+                return 'status-wfh';
+            case 'absent':
+                return 'status-absent';
+            default:
+                if ($lateEntry && $earlyExit) {
+                    return 'status-late-early';
+                } elseif ($lateEntry) {
+                    return 'status-late';
+                } elseif ($earlyExit) {
+                    return 'status-early';
+                } elseif ($overtimeHours > 0.1) {
+                    return 'status-overtime';
+                }
+                return 'status-present';
+        }
     }
 }

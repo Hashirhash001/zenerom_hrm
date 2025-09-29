@@ -37,10 +37,18 @@ class SendDailyAttendanceReport extends Command
             ->pluck('company_email')
             ->toArray();
 
-        // Add hrm.zenerom@gmail.com to recipients, ensuring no duplicates
-        $additionalEmail = 'hrm.zenerom@gmail.com';
-        if (!in_array($additionalEmail, $recipients)) {
-            $recipients[] = $additionalEmail;
+        // Add multiple email addresses to recipients, ensuring no duplicates
+        $additionalEmails = [
+            'hrm.zenerom@gmail.com',
+            'operation@zenerom.ae',
+            'jithin@zenerom.ae',
+            'roy@zenerom.com',
+            'nikhil@zenerom.com'
+        ];
+        foreach ($additionalEmails as $email) {
+            if (!in_array($email, $recipients)) {
+                $recipients[] = $email;
+            }
         }
 
         if (empty($recipients)) {

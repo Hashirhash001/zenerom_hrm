@@ -90,7 +90,6 @@ class ReminderController extends Controller
 
         $thisWeek = [];
         $thisMonth = [];
-        $dailyReminders = [];
         $processedDates = []; // Track processed reminder_id + date combinations
 
         foreach ($reminders as $reminder) {
@@ -135,41 +134,8 @@ class ReminderController extends Controller
                             'status' => $statusRecord->status,
                         ] : null,
                     ]);
-                    $isToday = Carbon::parse($date, 'Asia/Kolkata')->isToday();
-                    $isOverdue = $status === 'not_completed' && Carbon::parse($date, 'Asia/Kolkata')->isBefore($today);
 
-                    // Include overdue tasks for every day from report_date until today or completed
-                    if ($status === 'not_completed' && Carbon::parse($date, 'Asia/Kolkata')->isBefore($today)) {
-                        $overdueDate = Carbon::parse($date, 'Asia/Kolkata');
-                        $currentOverdue = $overdueDate->copy();
-                        while ($currentOverdue <= $today && $status === 'not_completed') {
-                            $overdueKey = $reminder->id . '-' . $currentOverdue->format('Y-m-d');
-                            if (isset($processedDates[$overdueKey])) {
-                                $currentOverdue->addDay();
-                                continue; // Skip duplicates
-                            }
-                            $processedDates[$overdueKey] = true;
-
-                            if ($currentOverdue >= $weekStart && $currentOverdue <= $weekEnd) {
-                                $thisWeek[] = [
-                                    'id' => $reminder->id,
-                                    'title' => $reminder->title,
-                                    'project' => $reminder->project ? $reminder->project->name : 'N/A',
-                                    'services' => $services,
-                                    'type' => ucfirst(str_replace('_', ' ', $reminder->type)),
-                                    'date' => $currentOverdue->format('Y-m-d'),
-                                    'display_date' => $this->formatDisplayDate($currentOverdue->format('Y-m-d'), $today),
-                                    'time_of_day' => $timeOfDay,
-                                    'frequency' => $reminder->frequency,
-                                    'frequency_display' => "Daily at $timeOfDay",
-                                    'status' => $status,
-                                    'is_today' => $currentOverdue->isToday(),
-                                    'is_overdue' => true,
-                                ];
-                            }
-                            $currentOverdue->addDay();
-                        }
-                    } else if ($current >= $today) {
+                    if ($status === 'not_completed') {
                         $thisWeek[] = [
                             'id' => $reminder->id,
                             'title' => $reminder->title,
@@ -182,35 +148,37 @@ class ReminderController extends Controller
                             'frequency' => $reminder->frequency,
                             'frequency_display' => "Daily at $timeOfDay",
                             'status' => $status,
-                            'is_today' => $isToday,
-                            'is_overdue' => $isOverdue,
+                            'is_today' => $current->isToday(),
+                            'is_overdue' => $status === 'not_completed' && (
+                                Carbon::parse($date, 'Asia/Kolkata')->isBefore($today) ||
+                                (Carbon::parse($date, 'Asia/Kolkata')->isToday() && Carbon::now('Asia/Kolkata')->gt(Carbon::parse("$date $reminder->time_of_day", 'Asia/Kolkata')))
+                            ),
                         ];
                     }
                     $current->addDay();
                 }
 
-                if (!isset($dailyReminders[$reminder->id])) {
-                    $date = $today->format('Y-m-d');
-                    $key = $reminder->id . '-' . $date;
-                    if (!isset($processedDates[$key])) {
-                        $processedDates[$key] = true;
-                        $statusRecord = $reminder->statuses->first(function ($status) use ($date) {
-                            return $status->report_date->format('Y-m-d') === $date;
-                        });
-                        $status = $statusRecord ? $statusRecord->status : 'not_completed';
-                        Log::info('Daily reminder status check for this_month', [
-                            'reminder_id' => $reminder->id,
-                            'report_date' => $date,
-                            'status' => $status,
-                            'status_record' => $statusRecord ? [
-                                'id' => $statusRecord->id,
-                                'report_date' => $statusRecord->report_date->format('Y-m-d'),
-                                'status' => $statusRecord->status,
-                            ] : null,
-                        ]);
-                        $isToday = true;
-                        $isOverdue = $status === 'not_completed' && Carbon::parse($date, 'Asia/Kolkata')->isBefore($today);
+                // Single daily reminder for this_month (today if not completed)
+                $date = $today->format('Y-m-d');
+                $key = $reminder->id . '-' . $date;
+                if (!isset($processedDates[$key])) {
+                    $processedDates[$key] = true;
+                    $statusRecord = $reminder->statuses->first(function ($status) use ($date) {
+                        return $status->report_date->format('Y-m-d') === $date;
+                    });
+                    $status = $statusRecord ? $statusRecord->status : 'not_completed';
+                    Log::info('Daily reminder status check for this_month', [
+                        'reminder_id' => $reminder->id,
+                        'report_date' => $date,
+                        'status' => $status,
+                        'status_record' => $statusRecord ? [
+                            'id' => $statusRecord->id,
+                            'report_date' => $statusRecord->report_date->format('Y-m-d'),
+                            'status' => $statusRecord->status,
+                        ] : null,
+                    ]);
 
+                    if ($status === 'not_completed') {
                         $thisMonth[] = [
                             'id' => $reminder->id,
                             'title' => $reminder->title,
@@ -223,10 +191,9 @@ class ReminderController extends Controller
                             'frequency' => $reminder->frequency,
                             'frequency_display' => "Daily at $timeOfDay",
                             'status' => $status,
-                            'is_today' => $isToday,
-                            'is_overdue' => $isOverdue,
+                            'is_today' => true,
+                            'is_overdue' => $status === 'not_completed' && Carbon::now('Asia/Kolkata')->gt(Carbon::parse("$date $reminder->time_of_day", 'Asia/Kolkata')),
                         ];
-                        $dailyReminders[$reminder->id] = true;
                     }
                 }
             } else {
@@ -251,67 +218,8 @@ class ReminderController extends Controller
                             'status' => $statusRecord->status,
                         ] : null,
                     ]);
-                    $isToday = Carbon::parse($date, 'Asia/Kolkata')->isToday();
-                    $isOverdue = $status === 'not_completed' && Carbon::parse($date, 'Asia/Kolkata')->isBefore($today);
 
-                    // Include overdue tasks for every day from report_date until today or completed
-                    if ($status === 'not_completed' && Carbon::parse($date, 'Asia/Kolkata')->isBefore($today)) {
-                        $overdueDate = Carbon::parse($date, 'Asia/Kolkata');
-                        $currentOverdue = $overdueDate->copy();
-                        while ($currentOverdue <= $today && $status === 'not_completed') {
-                            $overdueKey = $reminder->id . '-' . $currentOverdue->format('Y-m-d');
-                            if (isset($processedDates[$overdueKey])) {
-                                $currentOverdue->addDay();
-                                continue; // Skip duplicates
-                            }
-                            $processedDates[$overdueKey] = true;
-
-                            if ($currentOverdue >= $weekStart && $currentOverdue <= $weekEnd) {
-                                $thisWeek[] = [
-                                    'id' => $reminder->id,
-                                    'title' => $reminder->title,
-                                    'project' => $reminder->project ? $reminder->project->name : 'N/A',
-                                    'services' => $services,
-                                    'type' => ucfirst(str_replace('_', ' ', $reminder->type)),
-                                    'date' => $currentOverdue->format('Y-m-d'),
-                                    'display_date' => $this->formatDisplayDate($currentOverdue->format('Y-m-d'), $today),
-                                    'time_of_day' => $timeOfDay,
-                                    'frequency' => $reminder->frequency,
-                                    'frequency_display' => $reminder->frequency === 'weekly'
-                                        ? "Weekly on " . Carbon::parse($currentOverdue, 'Asia/Kolkata')->format('l') . " at $timeOfDay"
-                                        : ($reminder->frequency === 'monthly'
-                                            ? "Monthly on day " . Carbon::parse($currentOverdue, 'Asia/Kolkata')->day . " at $timeOfDay"
-                                            : "One-time on " . Carbon::parse($currentOverdue, 'Asia/Kolkata')->format('d M Y') . " at $timeOfDay"),
-                                    'status' => $status,
-                                    'is_today' => $currentOverdue->isToday(),
-                                    'is_overdue' => true,
-                                ];
-                            }
-                            if ($currentOverdue >= $monthStart && $currentOverdue <= $monthEnd && !isset($dailyReminders[$reminder->id . $date])) {
-                                $thisMonth[] = [
-                                    'id' => $reminder->id,
-                                    'title' => $reminder->title,
-                                    'project' => $reminder->project ? $reminder->project->name : 'N/A',
-                                    'services' => $services,
-                                    'type' => ucfirst(str_replace('_', ' ', $reminder->type)),
-                                    'date' => $currentOverdue->format('Y-m-d'),
-                                    'display_date' => $this->formatDisplayDate($currentOverdue->format('Y-m-d'), $today),
-                                    'time_of_day' => $timeOfDay,
-                                    'frequency' => $reminder->frequency,
-                                    'frequency_display' => $reminder->frequency === 'weekly'
-                                        ? "Weekly on " . Carbon::parse($currentOverdue, 'Asia/Kolkata')->format('l') . " at $timeOfDay"
-                                        : ($reminder->frequency === 'monthly'
-                                            ? "Monthly on day " . Carbon::parse($currentOverdue, 'Asia/Kolkata')->day . " at $timeOfDay"
-                                            : "One-time on " . Carbon::parse($currentOverdue, 'Asia/Kolkata')->format('d M Y') . " at $timeOfDay"),
-                                    'status' => $status,
-                                    'is_today' => $currentOverdue->isToday(),
-                                    'is_overdue' => true,
-                                ];
-                                $dailyReminders[$reminder->id . $date] = true;
-                            }
-                            $currentOverdue->addDay();
-                        }
-                    } else {
+                    if ($status === 'not_completed') {
                         $thisWeek[] = [
                             'id' => $reminder->id,
                             'title' => $reminder->title,
@@ -328,24 +236,27 @@ class ReminderController extends Controller
                                     ? "Monthly on day " . Carbon::parse($date, 'Asia/Kolkata')->day . " at $timeOfDay"
                                     : "One-time on " . Carbon::parse($date, 'Asia/Kolkata')->format('d M Y') . " at $timeOfDay"),
                             'status' => $status,
-                            'is_today' => $isToday,
-                            'is_overdue' => $isOverdue,
+                            'is_today' => Carbon::parse($date, 'Asia/Kolkata')->isToday(),
+                            'is_overdue' => $status === 'not_completed' && (
+                                Carbon::parse($date, 'Asia/Kolkata')->isBefore($today) ||
+                                (Carbon::parse($date, 'Asia/Kolkata')->isToday() && Carbon::now('Asia/Kolkata')->gt(Carbon::parse("$date $reminder->time_of_day", 'Asia/Kolkata')))
+                            ),
                         ];
                     }
                 }
 
+                // All non-completed dates for this_month (weekly, monthly, one-time)
                 foreach ($reminderDates['month'] as $date) {
                     $key = $reminder->id . '-' . $date;
                     if (isset($processedDates[$key])) {
                         continue; // Skip duplicates
                     }
                     $processedDates[$key] = true;
-
                     $statusRecord = $reminder->statuses->first(function ($status) use ($date) {
                         return $status->report_date->format('Y-m-d') === $date;
                     });
                     $status = $statusRecord ? $statusRecord->status : 'not_completed';
-                    Log::info('Reminder status check', [
+                    Log::info('Reminder status check for this_month', [
                         'reminder_id' => $reminder->id,
                         'report_date' => $date,
                         'status' => $status,
@@ -355,44 +266,8 @@ class ReminderController extends Controller
                             'status' => $statusRecord->status,
                         ] : null,
                     ]);
-                    $isToday = Carbon::parse($date, 'Asia/Kolkata')->isToday();
-                    $isOverdue = $status === 'not_completed' && Carbon::parse($date, 'Asia/Kolkata')->isBefore($today);
 
-                    if ($status === 'not_completed' && Carbon::parse($date, 'Asia/Kolkata')->isBefore($today)) {
-                        $overdueDate = Carbon::parse($date, 'Asia/Kolkata');
-                        $currentOverdue = $overdueDate->copy();
-                        while ($currentOverdue <= $today && $status === 'not_completed') {
-                            $overdueKey = $reminder->id . '-' . $currentOverdue->format('Y-m-d');
-                            if (isset($processedDates[$overdueKey])) {
-                                $currentOverdue->addDay();
-                                continue; // Skip duplicates
-                            }
-                            $processedDates[$overdueKey] = true;
-
-                            if ($currentOverdue >= $monthStart && $currentOverdue <= $monthEnd) {
-                                $thisMonth[] = [
-                                    'id' => $reminder->id,
-                                    'title' => $reminder->title,
-                                    'project' => $reminder->project ? $reminder->project->name : 'N/A',
-                                    'services' => $services,
-                                    'type' => ucfirst(str_replace('_', ' ', $reminder->type)),
-                                    'date' => $currentOverdue->format('Y-m-d'),
-                                    'display_date' => $this->formatDisplayDate($currentOverdue->format('Y-m-d'), $today),
-                                    'time_of_day' => $timeOfDay,
-                                    'frequency' => $reminder->frequency,
-                                    'frequency_display' => $reminder->frequency === 'weekly'
-                                        ? "Weekly on " . Carbon::parse($currentOverdue, 'Asia/Kolkata')->format('l') . " at $timeOfDay"
-                                        : ($reminder->frequency === 'monthly'
-                                            ? "Monthly on day " . Carbon::parse($currentOverdue, 'Asia/Kolkata')->day . " at $timeOfDay"
-                                            : "One-time on " . Carbon::parse($currentOverdue, 'Asia/Kolkata')->format('d M Y') . " at $timeOfDay"),
-                                    'status' => $status,
-                                    'is_today' => $currentOverdue->isToday(),
-                                    'is_overdue' => true,
-                                ];
-                            }
-                            $currentOverdue->addDay();
-                        }
-                    } else {
+                    if ($status === 'not_completed' && Carbon::parse($date, 'Asia/Kolkata')->gte($today)) {
                         $thisMonth[] = [
                             'id' => $reminder->id,
                             'title' => $reminder->title,
@@ -409,29 +284,51 @@ class ReminderController extends Controller
                                     ? "Monthly on day " . Carbon::parse($date, 'Asia/Kolkata')->day . " at $timeOfDay"
                                     : "One-time on " . Carbon::parse($date, 'Asia/Kolkata')->format('d M Y') . " at $timeOfDay"),
                             'status' => $status,
-                            'is_today' => $isToday,
-                            'is_overdue' => $isOverdue,
+                            'is_today' => Carbon::parse($date, 'Asia/Kolkata')->isToday(),
+                            'is_overdue' => $status === 'not_completed' && (
+                                Carbon::parse($date, 'Asia/Kolkata')->isBefore($today) ||
+                                (Carbon::parse($date, 'Asia/Kolkata')->isToday() && Carbon::now('Asia/Kolkata')->gt(Carbon::parse("$date $reminder->time_of_day", 'Asia/Kolkata')))
+                            ),
                         ];
                     }
                 }
             }
         }
 
-        // Sort: is_overdue first, then is_today, then by date ascending
-        $sortPriority = function ($a, $b) use ($today) {
-            // Prioritize is_overdue
+        // Sort tasks: weekly by date, others by is_overdue, is_today, then date
+        $weeklyReminders = array_filter($thisWeek, fn($r) => $r['frequency'] === 'weekly');
+        $otherReminders = array_filter($thisWeek, fn($r) => $r['frequency'] !== 'weekly');
+        usort($weeklyReminders, fn($a, $b) => strcmp($a['date'], $b['date']));
+        usort($otherReminders, function ($a, $b) use ($today) {
             if ($a['is_overdue'] !== $b['is_overdue']) {
                 return $b['is_overdue'] <=> $a['is_overdue'];
             }
-            // Then is_today
+            if ($a['is_overdue'] && $b['is_overdue']) {
+                return strcmp($a['date'], $b['date']);
+            }
             if ($a['is_today'] !== $b['is_today']) {
                 return $b['is_today'] <=> $a['is_today'];
             }
-            // Then by date ascending
             return strcmp($a['date'], $b['date']);
-        };
-        usort($thisWeek, $sortPriority);
-        usort($thisMonth, $sortPriority);
+        });
+        $thisWeek = array_merge($otherReminders, $weeklyReminders);
+
+        $weeklyRemindersMonth = array_filter($thisMonth, fn($r) => $r['frequency'] === 'weekly');
+        $otherRemindersMonth = array_filter($thisMonth, fn($r) => $r['frequency'] !== 'weekly');
+        usort($weeklyRemindersMonth, fn($a, $b) => strcmp($a['date'], $b['date']));
+        usort($otherRemindersMonth, function ($a, $b) use ($today) {
+            if ($a['is_overdue'] !== $b['is_overdue']) {
+                return $b['is_overdue'] <=> $a['is_overdue'];
+            }
+            if ($a['is_overdue'] && $b['is_overdue']) {
+                return strcmp($a['date'], $b['date']);
+            }
+            if ($a['is_today'] !== $b['is_today']) {
+                return $b['is_today'] <=> $a['is_today'];
+            }
+            return strcmp($a['date'], $b['date']);
+        });
+        $thisMonth = array_merge($otherRemindersMonth, $weeklyRemindersMonth);
 
         $response = [
             'success' => true,
@@ -458,13 +355,12 @@ class ReminderController extends Controller
     {
         $dates = ['week' => [], 'month' => []];
         $today = Carbon::today('Asia/Kolkata');
+        $now = Carbon::now('Asia/Kolkata');
 
         if ($reminder->frequency === 'daily') {
             $current = $weekStart->copy();
             while ($current <= $weekEnd) {
-                if ($current >= $today) {
-                    $dates['week'][] = $current->format('Y-m-d');
-                }
+                $dates['week'][] = $current->format('Y-m-d');
                 $current->addDay();
             }
             if ($today >= $monthStart && $today <= $monthEnd) {
@@ -472,19 +368,35 @@ class ReminderController extends Controller
             }
         } elseif ($reminder->frequency === 'weekly') {
             $daysOfWeek = $reminder->days_of_week ?? [];
+            // Overdue and current tasks for this week
             $current = $weekStart->copy();
             while ($current <= $weekEnd) {
                 $dow = $current->dayOfWeek === 0 ? 7 : $current->dayOfWeek;
-                if (in_array($dow, $daysOfWeek) && $current >= $today) {
-                    $dates['week'][] = $current->format('Y-m-d');
+                if (in_array($dow, $daysOfWeek)) {
+                    $date = $current->format('Y-m-d');
+                    $statusRecord = $reminder->statuses->first(function ($status) use ($date) {
+                        return $status->report_date->format('Y-m-d') === $date;
+                    });
+                    $status = $statusRecord ? $statusRecord->status : 'not_completed';
+                    if ($status === 'not_completed' || $current >= $today) {
+                        $dates['week'][] = $date;
+                    }
                 }
                 $current->addDay();
             }
-            $current = $monthStart->copy();
+            // All non-completed future dates for this month
+            $current = $monthStart->copy()->startOfDay();
             while ($current <= $monthEnd) {
                 $dow = $current->dayOfWeek === 0 ? 7 : $current->dayOfWeek;
-                if (in_array($dow, $daysOfWeek) && $current >= $today) {
-                    $dates['month'][] = $current->format('Y-m-d');
+                if (in_array($dow, $daysOfWeek)) {
+                    $date = $current->format('Y-m-d');
+                    $statusRecord = $reminder->statuses->first(function ($status) use ($date) {
+                        return $status->report_date->format('Y-m-d') === $date;
+                    });
+                    $status = $statusRecord ? $statusRecord->status : 'not_completed';
+                    if ($status === 'not_completed' && $current >= $today) {
+                        $dates['month'][] = $date;
+                    }
                 }
                 $current->addDay();
             }
@@ -641,7 +553,7 @@ class ReminderController extends Controller
 
         $reportDate = Carbon::parse($validated['report_date'], 'Asia/Kolkata')->format('Y-m-d');
 
-        // Allow updates for any report_date displayed today (including overdue tasks)
+        // Allow updates for any displayed date (overdue or today)
         $isValidDate = false;
         if ($reminder->frequency === 'daily') {
             $isValidDate = Carbon::parse($reportDate, 'Asia/Kolkata')->lte($today); // Allow any date up to today
