@@ -4,11 +4,11 @@ namespace App\Http\Controllers;
 
 use Carbon\Carbon;
 
-use App\Models\Role;
-
 use App\Models\Employee;
-use App\Models\Department;
+
 use App\Models\TaskAssigned;
+use App\Models\Department;
+use App\Models\Role;
 
 use Illuminate\Http\Request;
 use App\Models\PublicHoliday;
@@ -439,7 +439,6 @@ class AttendanceController extends Controller
                     if ($workEnd->lessThan($workStart)) {
                         $workEnd->addDay();
                     }
-
                     // 1 hour less + 5-minute buffer
                     $requiredWorkSeconds = $workEnd->diffInSeconds($workStart) - 3600 - 300; // 5-minute buffer
                     $halfDaySeconds = $requiredWorkSeconds / 2;
@@ -1024,7 +1023,7 @@ class AttendanceController extends Controller
 
         return view('attendance.work_from_home', compact('records', 'startDate', 'endDate', 'employees', 'staffId'));
     }
-
+    
     public function leaveReport(Request $request)
     {
         $startDate = $request->input('start_date', Carbon::today('Asia/Kolkata')->toDateString());
@@ -1066,7 +1065,7 @@ class AttendanceController extends Controller
                 'employees.middle_name',
                 'employees.last_name',
                 'employees.employee_id',
-                'employees.email',
+                'employees.company_email',
                 'employees.saturday_exempt',
                 'employees.created_at',
                 'employees.role_id', // Added to access role_id for holiday checks
@@ -1310,7 +1309,7 @@ class AttendanceController extends Controller
                 'middle_name' => $employee->middle_name,
                 'last_name' => $employee->last_name,
                 'employee_id' => $employee->employee_id,
-                'email' => $employee->email,
+                'email' => $employee->company_email,
                 'department' => $employee->department,
                 'role' => $employee->role,
                 'leave_count' => $leaveCount,
@@ -1353,7 +1352,7 @@ class AttendanceController extends Controller
 
         return view('attendance.leave_report', compact('records', 'startDate', 'endDate', 'activeEmployees', 'staffId', 'departmentId', 'roleId', 'departments', 'roles', 'exportTitle'));
     }
-
+    
     public function getEmployeeAttendanceDetails(Request $request, $employeeId)
     {
         $startDate = $request->input('start_date');
@@ -1385,6 +1384,9 @@ class AttendanceController extends Controller
             ->whereBetween('attendance_date', [$startDate, $endDate])
             ->orderBy('attendance_date', 'desc')
             ->get();
+        
+        // Get leave data from attendance records instead of staff_leaves table
+        $leaveData = $this->getLeaveDataFromAttendance($attendanceRecords, $employee, $startDate, $endDate);
         
         // Get public holidays in the date range
         $holidays = PublicHoliday::where('year', '>=', Carbon::parse($startDate)->year)
@@ -1452,11 +1454,11 @@ class AttendanceController extends Controller
                 $expectedStartTime = Carbon::parse($dateString . ' ' . $workStartTime);
                 $expectedEndTime = Carbon::parse($dateString . ' ' . $workEndTime);
                 
-                // Calculate late entry (more than 15 minutes late)
+                // Calculate late entry (more than 15 minutes late) - KEEP 15 MIN BUFFER
                 $lateEntry = $loginTime->gt($expectedStartTime->copy()->addMinutes(15));
                 $lateMinutes = $lateEntry ? $loginTime->diffInMinutes($expectedStartTime) : 0;
                 
-                // Calculate early exit (more than 15 minutes early)
+                // Calculate early exit (more than 15 minutes early) - KEEP 15 MIN BUFFER
                 $earlyExit = false;
                 $earlyMinutes = 0;
                 if ($logoutTime && $logoutTime->lt($expectedEndTime->copy()->subMinutes(15))) {
@@ -1488,11 +1490,11 @@ class AttendanceController extends Controller
                 $detailedRecords[] = [
                     'date' => $currentDate->format('d M Y'),
                     'day' => $currentDate->format('l'),
-                    'login_time' => $loginTime->format('h:i A'), // AM/PM format
-                    'logout_time' => $logoutTime ? $logoutTime->format('h:i A') : 'Still Working', // AM/PM format
+                    'login_time' => $loginTime->format('h:i A'),
+                    'logout_time' => $logoutTime ? $logoutTime->format('h:i A') : 'Still Working',
                     'mode' => $attendance->mode ?? 'Present',
-                    'total_work_hours' => $this->formatHours($totalWorkSeconds),
-                    'total_break_time' => $this->formatDuration($totalBreakMinutes * 60),
+                    'total_work_hours' => $this->formatEmployeeWorkHours($totalWorkSeconds),
+                    'total_break_time' => $this->formatEmployeeBreakTime($totalBreakMinutes * 60),
                     'breaks_count' => count($breaks),
                     'late_entry' => $lateEntry,
                     'late_minutes' => $lateMinutes,
@@ -1526,15 +1528,19 @@ class AttendanceController extends Controller
             $currentDate->addDay();
         }
         
+        // Calculate total break count
+        $totalBreakCount = array_sum(array_column($detailedRecords, 'breaks_count'));
+        
         return response()->json([
             'employee' => [
                 'name' => $employee->first_name . ' ' . ($employee->middle_name ? $employee->middle_name . ' ' : '') . $employee->last_name,
                 'employee_id' => $employee->employee_id,
                 'department' => $employee->department->name ?? 'N/A',
                 'role' => $employee->role->name ?? 'N/A',
-                'work_schedule' => $formattedSchedule // Use formatted schedule
+                'work_schedule' => $formattedSchedule
             ],
             'records' => $detailedRecords,
+            'leave_data' => $leaveData,
             'summary' => [
                 'total_days' => count($detailedRecords),
                 'present_days' => count(array_filter($detailedRecords, function($record) {
@@ -1546,13 +1552,121 @@ class AttendanceController extends Controller
                 'early_exits' => count(array_filter($detailedRecords, function($record) {
                     return $record['early_exit'];
                 })),
-                'total_overtime_hours' => array_sum(array_column($detailedRecords, 'overtime_hours'))
+                'total_overtime_hours' => array_sum(array_column($detailedRecords, 'overtime_hours')),
+                'total_break_count' => $totalBreakCount,
+                'leave_count' => $leaveData['leave_count'],
+                'wfh_count' => $leaveData['wfh_count'],
+                'half_day_count' => $leaveData['half_day_count'],
             ]
         ]);
     }
     
-    // Add this helper method to your AttendanceController
-    private function formatTimeToAMPM($time) {
+    // Get leave data from attendance records instead of staff_leaves table
+    private function getLeaveDataFromAttendance($attendanceRecords, $employee, $startDate, $endDate)
+    {
+        $leaveCount = 0;
+        $wfhCount = 0;
+        $halfDayCount = 0;
+        $leaveDates = [];
+        $wfhDates = [];
+        $halfDayDates = [];
+        
+        // Process attendance records for leave modes
+        foreach ($attendanceRecords as $record) {
+            $formattedDate = Carbon::parse($record->attendance_date)->format('M d, Y');
+            
+            switch (strtolower($record->mode)) {
+                case 'leave':
+                    $leaveCount++;
+                    $leaveDates[] = $formattedDate;
+                    break;
+                case 'work from home':
+                case 'wfh':
+                    $wfhCount++;
+                    $wfhDates[] = $formattedDate;
+                    break;
+                case 'half day':
+                    $halfDayCount++;
+                    $halfDayDates[] = $formattedDate;
+                    break;
+            }
+        }
+        
+        // Also check for absent days (days with no attendance record)
+        $currentDate = Carbon::parse($startDate);
+        $endDateCarbon = Carbon::parse($endDate);
+        
+        // Get public holidays to exclude them from absent days
+        $holidays = PublicHoliday::where('year', '>=', Carbon::parse($startDate)->year)
+            ->where('year', '<=', Carbon::parse($endDate)->year)
+            ->get()
+            ->flatMap(function ($holiday) {
+                return collect($holiday->dates)->map(function ($date) use ($holiday) {
+                    return [
+                        'date' => Carbon::parse($date)->toDateString(),
+                        'role_ids' => $holiday->role_ids,
+                        'name' => $holiday->name,
+                    ];
+                });
+            })
+            ->filter(function ($holiday) use ($startDate, $endDate) {
+                return Carbon::parse($holiday['date'])->between($startDate, $endDate);
+            })
+            ->groupBy('date');
+        
+        while ($currentDate <= $endDateCarbon) {
+            $dateString = $currentDate->toDateString();
+            $formattedDate = $currentDate->format('M d, Y');
+            
+            // Skip weekends and holidays
+            if ($currentDate->isSunday() || 
+                ($employee->saturday_exempt == 1 && $currentDate->isSaturday())) {
+                $currentDate->addDay();
+                continue;
+            }
+            
+            // Check if it's a holiday for this employee's role
+            $isHoliday = false;
+            if (isset($holidays[$dateString])) {
+                foreach ($holidays[$dateString] as $holiday) {
+                    $roleIds = is_array($holiday['role_ids']) ? $holiday['role_ids'] : json_decode($holiday['role_ids'], true) ?? [];
+                    if (in_array($employee->role_id, $roleIds)) {
+                        $isHoliday = true;
+                        break;
+                    }
+                }
+            }
+            
+            if ($isHoliday) {
+                $currentDate->addDay();
+                continue;
+            }
+            
+            // Check if there's no attendance record for this working day
+            $hasAttendance = $attendanceRecords->where('attendance_date', $dateString)->first();
+            
+            if (!$hasAttendance) {
+                // Consider it as a leave day
+                $leaveCount++;
+                $leaveDates[] = $formattedDate . ' (Absent)';
+            }
+            
+            $currentDate->addDay();
+        }
+        
+        return [
+            'leave_count' => $leaveCount,
+            'wfh_count' => $wfhCount,
+            'half_day_count' => $halfDayCount,
+            'leave_dates' => $leaveDates,
+            'wfh_dates' => $wfhDates,
+            'half_day_dates' => $halfDayDates,
+        ];
+    }
+    
+    // Helper method to format time to AM/PM
+    private function formatTimeToAMPM($time) 
+    {
         if (!$time || $time === '00:00:00') {
             return '';
         }
@@ -1560,10 +1674,11 @@ class AttendanceController extends Controller
         try {
             return \Carbon\Carbon::createFromFormat('H:i:s', $time)->format('h:i A');
         } catch (\Exception $e) {
-            return $time; // Return original if parsing fails
+            return $time;
         }
     }
     
+    // Get status class based on attendance mode and timing
     private function getStatusClass($mode, $lateEntry, $earlyExit, $overtimeHours)
     {
         switch (strtolower($mode)) {
@@ -1587,5 +1702,58 @@ class AttendanceController extends Controller
                 }
                 return 'status-present';
         }
+    }
+    
+    // UNIQUE METHOD NAMES for employee attendance details
+    private function formatEmployeeWorkHours($totalSeconds)
+    {
+        if ($totalSeconds === 0) {
+            return '0h 0m';
+        }
+        
+        $hours = floor($totalSeconds / 3600);
+        $minutes = floor(($totalSeconds % 3600) / 60);
+        
+        return $hours . 'h ' . $minutes . 'm';
+    }
+    
+    private function formatEmployeeBreakTime($seconds)
+    {
+        if ($seconds === 0) {
+            return '0m';
+        }
+        
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        
+        $result = '';
+        if ($hours > 0) {
+            $result .= $hours . 'h ';
+        }
+        if ($minutes > 0) {
+            $result .= $minutes . 'm';
+        }
+        
+        return trim($result);
+    }
+
+    // RENAMED: formatHours to formatAttendanceHours for other methods
+    private function formatAttendanceHours($seconds)
+    {
+        $hours = floor($seconds / 3600);
+        $minutes = floor(($seconds % 3600) / 60);
+        return sprintf('%d hour%s %d minute%s', $hours, $hours != 1 ? 's' : '', $minutes, $minutes != 1 ? 's' : '');
+    }
+
+    // RENAMED: formatDuration to formatBreakDuration for other methods
+    private function formatBreakDuration($seconds)
+    {
+        $minutes = floor($seconds / 60);
+        if ($minutes >= 60) {
+            $hours = floor($minutes / 60);
+            $remainingMinutes = $minutes % 60;
+            return sprintf('%d hour%s %d minute%s', $hours, $hours != 1 ? 's' : '', $remainingMinutes, $remainingMinutes != 1 ? 's' : '');
+        }
+        return sprintf('%d minute%s', $minutes, $minutes != 1 ? 's' : '');
     }
 }

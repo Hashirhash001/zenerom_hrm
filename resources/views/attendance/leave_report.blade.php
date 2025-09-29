@@ -1357,7 +1357,7 @@ function generateCorporatePDF(data, employeeName, startDate, endDate) {
         getPDFStatusText(record)
     ]);
 
-    // CORRECTED: Full Width Table Configuration
+    // FINAL SOLUTION: Force Full Width Table
     doc.autoTable({
         head: [['Date', 'Day', 'Login', 'Logout', 'Hours', 'Breaks', 'Mode', 'Status']],
         body: tableData,
@@ -1381,20 +1381,24 @@ function generateCorporatePDF(data, employeeName, startDate, endDate) {
             fillColor: [248, 249, 250]
         },
         columnStyles: {
-            0: { fontStyle: 'bold', halign: 'center', cellWidth: 'auto' },
-            1: { halign: 'center', cellWidth: 'auto' },
-            2: { fontStyle: 'bold', halign: 'center', cellWidth: 'auto' },
-            3: { fontStyle: 'bold', halign: 'center', cellWidth: 'auto' },
-            4: { fontStyle: 'bold', halign: 'center', cellWidth: 'auto' },
-            5: { halign: 'center', cellWidth: 'auto' },
-            6: { halign: 'center', cellWidth: 'auto' },
-            7: { halign: 'center', cellWidth: 'auto' }
+            0: { fontStyle: 'bold', halign: 'center', cellWidth: 23 }, // Fixed widths that add up to 180
+            1: { halign: 'center', cellWidth: 18 },
+            2: { fontStyle: 'bold', halign: 'center', cellWidth: 22 },
+            3: { fontStyle: 'bold', halign: 'center', cellWidth: 22 },
+            4: { fontStyle: 'bold', halign: 'center', cellWidth: 20 },
+            5: { halign: 'center', cellWidth: 25 },
+            6: { halign: 'center', cellWidth: 25 },
+            7: { halign: 'center', cellWidth: 25 }
         },
-        // KEY FIX: These settings ensure full width
+        // KEY: Force exact positioning and width
         margin: { left: 15, right: 15 },
-        tableWidth: 'wrap', // Use available width
-        theme: 'plain'
+        tableWidth: 180, // EXACT width: 210 - 15 - 15 = 180
+        theme: 'plain',
+        // FORCE positioning
+        tableLineWidth: 0,
+        tableLineColor: [255, 255, 255]
     });
+
 
     // Minimal Footer
     const finalY = doc.lastAutoTable.finalY + 8;
@@ -1416,4 +1420,3 @@ function generateCorporatePDF(data, employeeName, startDate, endDate) {
 
 </script>
 @endpush
-
