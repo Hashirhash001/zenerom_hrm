@@ -22,9 +22,6 @@ A role-based HRM web application built to manage employee data, attendance, leav
   - Project staff assignment
 - Reminders & scheduled actions
 - Notifications
-- Calendar events / meetings (if enabled)
-- Customer & vendor modules (if enabled in your build)
-- Activity logging (if enabled)
 
 ## Screenshots
 
