@@ -30,8 +30,8 @@ A role-based HRM web application built to manage employee data, attendance, leav
 Add screenshots into `docs/screens/` and link here.
 
 Example:
-- `docs/screens/dashboard.png`
-- `docs/screens/employees.png`
-- `docs/screens/attendance.png`
+- `docs/screens/screen1.png`
+- `docs/screens/screen2.png`
+- `docs/screens/screen3.png`
 
 ```md
