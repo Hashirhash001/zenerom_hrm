@@ -583,6 +583,7 @@ class AttendanceController extends Controller
         $userId = Auth::id();
         $today = Carbon::today('Asia/Kolkata');
         $action = $request->input('action');
+        $duration = $request->input('duration'); // Duration in minutes
         $now = Carbon::now('Asia/Kolkata');
 
         if (!in_array($action, ['start', 'end'])) {
@@ -635,6 +636,9 @@ class AttendanceController extends Controller
             $sessionSeconds = $now->diffInSeconds($start);
             $totalWorkSeconds = max(0, $sessionSeconds - $totalBreakSeconds);
 
+            // Calculate auto-end time if duration is provided
+            $breakEnd = $duration ? $now->copy()->addMinutes($duration) : null;
+
             DB::table('staff_attendance')
                 ->where('id', $attendance->id)
                 ->update([
@@ -646,6 +650,8 @@ class AttendanceController extends Controller
                 'user_id' => $userId,
                 'attendance_id' => $attendance->id,
                 'break_start' => $now,
+                'break_end' => $breakEnd, // Store auto-end time for predefined breaks
+                'duration' => $duration, // Store duration
                 'created_at' => $now,
                 'updated_at' => $now
             ]);
@@ -653,7 +659,9 @@ class AttendanceController extends Controller
             return response()->json([
                 'success' => true,
                 'breakTime' => $now->toDateTimeString(),
-                'message' => 'Break started successfully.',
+                'autoEndTime' => $breakEnd ? $breakEnd->toDateTimeString() : null,
+                'duration' => $duration,
+                'message' => $duration ? "Break started for {$duration} minutes." : 'Break started successfully.',
                 'is_on_break' => true,
                 'total_work_seconds' => $totalWorkSeconds,
                 'total_break_seconds' => $totalBreakSeconds,
@@ -704,6 +712,7 @@ class AttendanceController extends Controller
             ]);
         }
     }
+
 
     public function syncTimer(Request $request)
     {
@@ -1023,7 +1032,7 @@ class AttendanceController extends Controller
 
         return view('attendance.work_from_home', compact('records', 'startDate', 'endDate', 'employees', 'staffId'));
     }
-    
+
     public function leaveReport(Request $request)
     {
         $startDate = $request->input('start_date', Carbon::today('Asia/Kolkata')->toDateString());
@@ -1352,42 +1361,42 @@ class AttendanceController extends Controller
 
         return view('attendance.leave_report', compact('records', 'startDate', 'endDate', 'activeEmployees', 'staffId', 'departmentId', 'roleId', 'departments', 'roles', 'exportTitle'));
     }
-    
+
     public function getEmployeeAttendanceDetails(Request $request, $employeeId)
     {
         $startDate = $request->input('start_date');
         $endDate = $request->input('end_date');
-        
+
         // Get employee information
         $employee = Employee::with(['department', 'role'])
             ->where('id', $employeeId)
             ->first();
-        
+
         if (!$employee) {
             return response()->json(['error' => 'Employee not found'], 404);
         }
-        
+
         // Get employee's work schedule and format to AM/PM
         $workStartTime = $employee->work_start_time ?? '09:00:00';
         $workEndTime = $employee->work_end_time ?? '18:00:00';
-        
+
         // Format work schedule times to AM/PM
         $formattedStartTime = $this->formatTimeToAMPM($workStartTime);
         $formattedEndTime = $this->formatTimeToAMPM($workEndTime);
         $formattedSchedule = $formattedStartTime . ' - ' . $formattedEndTime;
-        
+
         $standardWorkHours = 8; // Standard work hours per day
-        
+
         // Get detailed attendance records
         $attendanceRecords = DB::table('staff_attendance')
             ->where('user_id', $employee->user_id)
             ->whereBetween('attendance_date', [$startDate, $endDate])
             ->orderBy('attendance_date', 'desc')
             ->get();
-        
+
         // Get leave data from attendance records instead of staff_leaves table
         $leaveData = $this->getLeaveDataFromAttendance($attendanceRecords, $employee, $startDate, $endDate);
-        
+
         // Get public holidays in the date range
         $holidays = PublicHoliday::where('year', '>=', Carbon::parse($startDate)->year)
             ->where('year', '<=', Carbon::parse($endDate)->year)
@@ -1405,27 +1414,27 @@ class AttendanceController extends Controller
                 return Carbon::parse($holiday['date'])->between($startDate, $endDate);
             })
             ->groupBy('date');
-        
+
         // Process each attendance record
         $detailedRecords = [];
         $currentDate = Carbon::parse($startDate);
         $endDateCarbon = Carbon::parse($endDate);
-        
+
         while ($currentDate <= $endDateCarbon) {
             $dateString = $currentDate->toDateString();
-            
+
             // Skip Sundays
             if ($currentDate->isSunday()) {
                 $currentDate->addDay();
                 continue;
             }
-            
+
             // Skip Saturdays for exempt employees
             if ($employee->saturday_exempt == 1 && $currentDate->isSaturday()) {
                 $currentDate->addDay();
                 continue;
             }
-            
+
             // Check if it's a holiday for this employee's role
             $isHoliday = false;
             if (isset($holidays[$dateString])) {
@@ -1437,27 +1446,27 @@ class AttendanceController extends Controller
                     }
                 }
             }
-            
+
             if ($isHoliday) {
                 $currentDate->addDay();
                 continue;
             }
-            
+
             // Find attendance record for this date
             $attendance = $attendanceRecords->where('attendance_date', $dateString)->first();
-            
+
             if ($attendance) {
                 // Calculate work timing indicators
                 $loginTime = Carbon::parse($attendance->created_at);
                 $logoutTime = $attendance->logout ? Carbon::parse($attendance->logout) : null;
-                
+
                 $expectedStartTime = Carbon::parse($dateString . ' ' . $workStartTime);
                 $expectedEndTime = Carbon::parse($dateString . ' ' . $workEndTime);
-                
+
                 // Calculate late entry (more than 15 minutes late) - KEEP 15 MIN BUFFER
                 $lateEntry = $loginTime->gt($expectedStartTime->copy()->addMinutes(15));
                 $lateMinutes = $lateEntry ? $loginTime->diffInMinutes($expectedStartTime) : 0;
-                
+
                 // Calculate early exit (more than 15 minutes early) - KEEP 15 MIN BUFFER
                 $earlyExit = false;
                 $earlyMinutes = 0;
@@ -1465,28 +1474,28 @@ class AttendanceController extends Controller
                     $earlyExit = true;
                     $earlyMinutes = $expectedEndTime->diffInMinutes($logoutTime);
                 }
-                
+
                 // Calculate total work time and overtime
                 $totalWorkSeconds = $attendance->total_work_seconds ?? 0;
                 if (!$logoutTime && $attendance->last_timer_start) {
                     $totalWorkSeconds += Carbon::now('Asia/Kolkata')->diffInSeconds(Carbon::parse($attendance->last_timer_start));
                 }
-                
+
                 $totalWorkHours = $totalWorkSeconds / 3600;
                 $overtimeHours = max(0, $totalWorkHours - $standardWorkHours);
-                
+
                 // Get break details
                 $breaks = DB::table('staff_breaks')
                     ->where('attendance_id', $attendance->id)
                     ->whereNotNull('break_end')
                     ->select('break_start', 'break_end')
                     ->get();
-                
+
                 $totalBreakMinutes = 0;
                 foreach ($breaks as $break) {
                     $totalBreakMinutes += Carbon::parse($break->break_start)->diffInMinutes(Carbon::parse($break->break_end));
                 }
-                
+
                 $detailedRecords[] = [
                     'date' => $currentDate->format('d M Y'),
                     'day' => $currentDate->format('l'),
@@ -1524,13 +1533,13 @@ class AttendanceController extends Controller
                     'raw_date' => $dateString
                 ];
             }
-            
+
             $currentDate->addDay();
         }
-        
+
         // Calculate total break count
         $totalBreakCount = array_sum(array_column($detailedRecords, 'breaks_count'));
-        
+
         return response()->json([
             'employee' => [
                 'name' => $employee->first_name . ' ' . ($employee->middle_name ? $employee->middle_name . ' ' : '') . $employee->last_name,
@@ -1560,7 +1569,7 @@ class AttendanceController extends Controller
             ]
         ]);
     }
-    
+
     // Get leave data from attendance records instead of staff_leaves table
     private function getLeaveDataFromAttendance($attendanceRecords, $employee, $startDate, $endDate)
     {
@@ -1570,11 +1579,11 @@ class AttendanceController extends Controller
         $leaveDates = [];
         $wfhDates = [];
         $halfDayDates = [];
-        
+
         // Process attendance records for leave modes
         foreach ($attendanceRecords as $record) {
             $formattedDate = Carbon::parse($record->attendance_date)->format('M d, Y');
-            
+
             switch (strtolower($record->mode)) {
                 case 'leave':
                     $leaveCount++;
@@ -1591,11 +1600,11 @@ class AttendanceController extends Controller
                     break;
             }
         }
-        
+
         // Also check for absent days (days with no attendance record)
         $currentDate = Carbon::parse($startDate);
         $endDateCarbon = Carbon::parse($endDate);
-        
+
         // Get public holidays to exclude them from absent days
         $holidays = PublicHoliday::where('year', '>=', Carbon::parse($startDate)->year)
             ->where('year', '<=', Carbon::parse($endDate)->year)
@@ -1613,18 +1622,18 @@ class AttendanceController extends Controller
                 return Carbon::parse($holiday['date'])->between($startDate, $endDate);
             })
             ->groupBy('date');
-        
+
         while ($currentDate <= $endDateCarbon) {
             $dateString = $currentDate->toDateString();
             $formattedDate = $currentDate->format('M d, Y');
-            
+
             // Skip weekends and holidays
-            if ($currentDate->isSunday() || 
+            if ($currentDate->isSunday() ||
                 ($employee->saturday_exempt == 1 && $currentDate->isSaturday())) {
                 $currentDate->addDay();
                 continue;
             }
-            
+
             // Check if it's a holiday for this employee's role
             $isHoliday = false;
             if (isset($holidays[$dateString])) {
@@ -1636,24 +1645,24 @@ class AttendanceController extends Controller
                     }
                 }
             }
-            
+
             if ($isHoliday) {
                 $currentDate->addDay();
                 continue;
             }
-            
+
             // Check if there's no attendance record for this working day
             $hasAttendance = $attendanceRecords->where('attendance_date', $dateString)->first();
-            
+
             if (!$hasAttendance) {
                 // Consider it as a leave day
                 $leaveCount++;
                 $leaveDates[] = $formattedDate . ' (Absent)';
             }
-            
+
             $currentDate->addDay();
         }
-        
+
         return [
             'leave_count' => $leaveCount,
             'wfh_count' => $wfhCount,
@@ -1663,21 +1672,21 @@ class AttendanceController extends Controller
             'half_day_dates' => $halfDayDates,
         ];
     }
-    
+
     // Helper method to format time to AM/PM
-    private function formatTimeToAMPM($time) 
+    private function formatTimeToAMPM($time)
     {
         if (!$time || $time === '00:00:00') {
             return '';
         }
-        
+
         try {
             return \Carbon\Carbon::createFromFormat('H:i:s', $time)->format('h:i A');
         } catch (\Exception $e) {
             return $time;
         }
     }
-    
+
     // Get status class based on attendance mode and timing
     private function getStatusClass($mode, $lateEntry, $earlyExit, $overtimeHours)
     {
@@ -1703,29 +1712,29 @@ class AttendanceController extends Controller
                 return 'status-present';
         }
     }
-    
+
     // UNIQUE METHOD NAMES for employee attendance details
     private function formatEmployeeWorkHours($totalSeconds)
     {
         if ($totalSeconds === 0) {
             return '0h 0m';
         }
-        
+
         $hours = floor($totalSeconds / 3600);
         $minutes = floor(($totalSeconds % 3600) / 60);
-        
+
         return $hours . 'h ' . $minutes . 'm';
     }
-    
+
     private function formatEmployeeBreakTime($seconds)
     {
         if ($seconds === 0) {
             return '0m';
         }
-        
+
         $hours = floor($seconds / 3600);
         $minutes = floor(($seconds % 3600) / 60);
-        
+
         $result = '';
         if ($hours > 0) {
             $result .= $hours . 'h ';
@@ -1733,7 +1742,7 @@ class AttendanceController extends Controller
         if ($minutes > 0) {
             $result .= $minutes . 'm';
         }
-        
+
         return trim($result);
     }
 

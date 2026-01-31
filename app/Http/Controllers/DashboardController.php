@@ -362,6 +362,18 @@ class DashboardController extends Controller
             ]);
         }
     }
+
+    public function accountant(Request $request)
+    {
+        if (session('rid') != 9) {
+            return redirect()->route('login');
+        } else {
+            return view('dashboard.accountant', [
+                'uid'   => session('uid'),
+                'uname' => session('uname')
+            ]);
+        }
+    }
     public function nocontent(Request $request)
     {
         // Since the check above runs for every method,

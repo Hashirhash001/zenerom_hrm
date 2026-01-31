@@ -83,6 +83,8 @@ class LoginController extends Controller
                 return redirect()->route('dashboard.interns');
             } else if ($user->role_id == 7) {
                 return redirect()->route('dashboard.hr');
+            } else if ($user->role_id == 9) {
+                return redirect()->route('dashboard.accountant');
             } else if ($user->role_id == 12) {
                 return redirect()->route('dashboard.junior');
             } else if ($user->role_id == 13) {
