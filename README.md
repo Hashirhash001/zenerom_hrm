@@ -27,11 +27,9 @@ A role-based HRM web application built to manage employee data, attendance, leav
 - Activity logging (if enabled)
 
 ## Screenshots
-Add screenshots into `docs/screens/` and link here.
 
-Example:
-- `docs/screens/screen1.png`
-- `docs/screens/screen2.png`
-- `docs/screens/screen3.png`
+![Screen 1](./docs/screens/screen1.png)
+![Screen 2](./docs/screens/screen2.png)
+![Screen 3](./docs/screens/screen3.png)
 
 ```md
