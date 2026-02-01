@@ -30,3 +30,9 @@ A role-based HRM web application built to manage employee data, attendance, leav
 ![Screen 2](./docs/screens/screen2.png)
 ![Screen 3](./docs/screens/screen3.png)
 ![Screen 3](./docs/screens/screen4.png)
+
+## Quick Setup (Local)
+- Clone the repo
+- Configure `.env`
+- Run migrations
+- Start the server
