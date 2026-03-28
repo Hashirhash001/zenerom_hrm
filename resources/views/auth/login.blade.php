@@ -7,6 +7,7 @@
     <meta name="author" content="Softnio">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <meta name="description" content="Zenerom Creative Lab Project Management">
+    <meta name="robots" content="noindex, nofollow">
     <!-- Fav Icon  -->
     <link rel="shortcut icon" href="{{ asset('images/favicon.png') }}">
     <!-- Page Title  -->
